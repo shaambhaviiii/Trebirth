@@ -311,7 +311,7 @@ def generate_pdf():
     else:
         test_by = filtered_scans[0]["CompanyName"]
         report_loc = filtered_scans[0]["City"]
-        requested_by = filtered_scans[0]["ReportRequestedBy"]
+        apartment_name = filtered_scans[0]["Apartment"]
         report_date = filtered_scans[0]["scan_date"]
         
         # Split the general information into multiple lines and add a Spacer after each line
@@ -319,8 +319,8 @@ def generate_pdf():
         data = [
             ["Tests were carried out by:", test_by],
             ["Date:", report_date],
-            ["Report for building at:", report_loc],
-            ["Report requested by:", requested_by]
+            ["Report for location at:", report_loc],
+            ["Name of the building/apartment:", apartment_name]
         ]
 
         # Create the table
