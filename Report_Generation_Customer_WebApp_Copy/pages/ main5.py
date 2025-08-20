@@ -285,14 +285,13 @@ def generate_pdf():
 
     
     elements = []
-    elements.append(Paragraph("TERMATRAC TEST REPORT", heading_style_centered))
-    elements.append(Paragraph("SUPPLEMENT TO TIMBER PEST REPORT", heading_style_centered))
+    elements.append(Paragraph("TREBIRTH TEST REPORT", heading_style_centered))
+    #elements.append(Paragraph("SUPPLEMENT TO TIMBER PEST REPORT", heading_style_centered))
     elements.append(Spacer(1, 16))
     
     desc_lines = [
-        "This Trebirth test report is a supplementary report only, which MUST be read in",
-        "conjunction with the full timber pest report. This report cannot be relied upon",
-        "without the full timber pest report and is only a record of the test findings."
+        "This Trebirth test report is a supplementary report only",
+        "and is only a record of the test findings."
     ]
     
     for line in desc_lines:
