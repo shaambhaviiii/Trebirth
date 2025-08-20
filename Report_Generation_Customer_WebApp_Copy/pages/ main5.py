@@ -379,8 +379,8 @@ def generate_pdf():
                     # Add additional device info below the graph
                     elements.append(Paragraph(f"Device Name: {device_name}", body_style))
                     elements.append(Spacer(1, 3))
-                    #elements.append(Paragraph(f"Timestamp: {datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')}", body_style))
-                    #elements.append(Spacer(1, 3))
+                    elements.append(Paragraph(f"Timestamp: {datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')}", body_style))
+                    elements.append(Spacer(1, 3))
                     #elements.append(Paragraph(f"Sampling Rate: {Sampling_rate}", body_style))
                     #elements.append(Spacer(1, 3))
                     #elements.append(Paragraph(f"Battery: {Battery}", body_style))
