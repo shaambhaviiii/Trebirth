@@ -125,8 +125,10 @@ def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, s
 
     fig.update_layout(
         template='plotly_white',
-        xaxis_title="Time (s)",
-        yaxis_title="Signal",
+        xaxis_title=None,  # Remove x-axis title
+        yaxis_title=None,  # Remove y-axis title
+        xaxis=dict(showticklabels=False),  # Hide x-axis tick labels
+        yaxis=dict(showticklabels=False),  # Hide y-axis tick labels
         legend_title="Scan",
         font=dict(color="black"),
         plot_bgcolor='rgba(0,0,0,0)',
