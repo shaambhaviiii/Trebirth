@@ -357,9 +357,9 @@ def generate_pdf():
                 if radar_raw:
                     processed_scan = preprocess_radar_data(radar_raw)
                     device_name = scan.get('Devicename', 'Unknown Device')
-                    Sampling_rate = scan.get("SamplingRate", "Unknown")
-                    How_used = scan.get("HowUsed", "Unknown")
-                    Battery = scan.get("Battery", "Unknown")
+                    #Sampling_rate = scan.get("SamplingRate", "Unknown")
+                    #How_used = scan.get("HowUsed", "Unknown")
+                    #Battery = scan.get("Battery", "Unknown")
                     timestamp = scan.get('timestamp', datetime.now())
                     scan_duration = scan.get("ScanDuration", "Unknown")
                     
@@ -377,22 +377,22 @@ def generate_pdf():
                     # Add additional device info below the graph
                     elements.append(Paragraph(f"Device Name: {device_name}", body_style))
                     elements.append(Spacer(1, 3))
-                    elements.append(Paragraph(f"Timestamp: {datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')}", body_style))
-                    elements.append(Spacer(1, 3))
-                    elements.append(Paragraph(f"Sampling Rate: {Sampling_rate}", body_style))
-                    elements.append(Spacer(1, 3))
-                    elements.append(Paragraph(f"Battery: {Battery}", body_style))
-                    elements.append(Spacer(1, 3))
-                    elements.append(Paragraph(f"Howused: {How_used}", body_style))
-                    elements.append(Spacer(1, 3))
+                    #elements.append(Paragraph(f"Timestamp: {datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')}", body_style))
+                    #elements.append(Spacer(1, 3))
+                    #elements.append(Paragraph(f"Sampling Rate: {Sampling_rate}", body_style))
+                    #elements.append(Spacer(1, 3))
+                    #elements.append(Paragraph(f"Battery: {Battery}", body_style))
+                    #elements.append(Spacer(1, 3))
+                    #elements.append(Paragraph(f"Howused: {How_used}", body_style))
+                    #elements.append(Spacer(1, 3))
                     elements.append(Paragraph(f"Scan Duration: {scan_duration}", body_style))
                     elements.append(Spacer(1, 12))
                 
                     data = [
                         ["Scan Location:", filtered_scans[0].get("Room", "N/A")],
-                        ["Scan Date:", filtered_scans[0].get("scan_date", "Unknown Date")],
-                        ["Termatrac device was:", filtered_scans[0].get("Positioned", "N/A")],
-                        ["Termatrac device position:", filtered_scans[0].get("Compass", "N/A")],
+                        #["Scan Date:", filtered_scans[0].get("scan_date", "Unknown Date")],
+                        ["Device was:", filtered_scans[0].get("Positioned", "N/A")],
+                        #["Termatrac device position:", filtered_scans[0].get("Compass", "N/A")],
                         ["Damage Visible:", filtered_scans[0].get("DamageVisible", "N/A")],
                     ]
                     table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
@@ -419,6 +419,6 @@ if st.button("Generate PDF Report"):
         st.download_button(
             label="Download PDF",
             data=file,
-            file_name="Trebirth_Termatrac_Test_Report.pdf",
+            file_name="Trebirth_Test_Report.pdf",
             mime="application/pdf",
         )
