@@ -290,8 +290,7 @@ def generate_pdf():
     elements.append(Spacer(1, 16))
     
     desc_lines = [
-        "This Trebirth test report is a supplementary report only",
-        "and is only a record of the test findings."
+        "This Trebirth test report is a supplementary report only", "and is only a record of the test findings."
     ]
     
     for line in desc_lines:
