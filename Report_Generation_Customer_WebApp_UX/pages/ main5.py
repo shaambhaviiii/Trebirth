@@ -11,14 +11,22 @@ import plotly.io as pio
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak, Table, TableStyle
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Image,
+    PageBreak,
+    Table,
+    TableStyle,
+)
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from google.api_core.exceptions import ResourceExhausted, RetryError
 
 # Set browser path for kaleido
-os.environ["BROWSER_PATH"] = "/usr/bin/chromium"  
+os.environ["BROWSER_PATH"] = "/usr/bin/chromium"
 st.set_page_config(layout="wide", page_title="Trebirth Scan Report Viewer")
 
 if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
@@ -35,14 +43,14 @@ company_credentials = {
     "Ilabs": "I2025$$",
     "PCI": "P2025$$",
     "Vlabs": "V2025$$",
-    "Trebirth": "T2025$$"
+    "Trebirth": "T2025$$",
 }
 
 def logout():
     st.session_state["authenticated"] = False
     st.session_state["company"] = None
     for key in list(st.session_state.keys()):
-        if key.startswith(('selected_', 'filtered_')):
+        if key.startswith(("selected_", "filtered_")):
             del st.session_state[key]
     st.rerun()
 
@@ -67,7 +75,7 @@ def exponential_backoff(retries):
 def fetch_data(company_name):
     if not db:
         return [], {}, []
-    query = db.collection('homescan2')
+    query = db.collection("homescan2")
     docs = query.stream()
 
     locations = set()
@@ -90,7 +98,11 @@ def fetch_data(company_name):
                     city_to_areas[location].add(area)
 
             timestamp_str = data.get("timestamp")
-            scan_date = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S").strftime('%Y-%m-%d') if timestamp_str else "Unknown Date"
+            scan_date = (
+                datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
+                if timestamp_str
+                else "Unknown Date"
+            )
             data["scan_date"] = scan_date
             scans_data.append(data)
 
@@ -98,89 +110,111 @@ def fetch_data(company_name):
 
 def preprocess_radar_data(radar_raw):
     import pandas as pd
-    df_radar = pd.DataFrame(radar_raw, columns=['Radar'])
+
+    df_radar = pd.DataFrame(radar_raw, columns=["Radar"])
     df_radar.dropna(inplace=True)
     df_radar.fillna(df_radar.mean(), inplace=True)
     return df_radar
 
 def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, sampling_rate=100):
     import plotly.graph_objects as go
+
     fig = go.Figure()
     time_seconds = np.arange(len(preprocessed_scan)) / sampling_rate
-    fig.add_trace(go.Scatter(
-        x=time_seconds,
-        y=preprocessed_scan['Radar'],
-        mode='lines',
-        name=f"{device_name} - Unknown Timestamp",
-        line=dict(color='blue')
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=time_seconds,
+            y=preprocessed_scan["Radar"],
+            mode="lines",
+            name=f"{device_name} - Unknown Timestamp",
+            line=dict(color="blue"),
+        )
+    )
     fig.update_layout(
-        template='plotly_white',
+        template="plotly_white",
         xaxis_title=None,
         yaxis_title=None,
         xaxis=dict(showticklabels=False),
         yaxis=dict(showticklabels=False),
         legend_title="Scan",
         font=dict(color="black"),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=100, r=100, t=100, b=100),
-        shapes=[dict(
-            type='rect',
-            x0=0,
-            y0=0,
-            x1=1,
-            y1=1,
-            xref='paper',
-            yref='paper',
-            line=dict(
-                color="black",
-                width=2
+        shapes=[
+            dict(
+                type="rect",
+                x0=0,
+                y0=0,
+                x1=1,
+                y1=1,
+                xref="paper",
+                yref="paper",
+                line=dict(color="black", width=2),
             )
-        )]
+        ],
     )
     return fig
 
 def generate_pdf_for_apartment(apartment_scans, company_name):
-    import matplotlib.pyplot as plt
     import plotly.io as pio
     import os
     import tempfile
+    import time
+
     pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
-    
+
     doc = SimpleDocTemplate(pdf_path, pagesize=A4)
     styles = getSampleStyleSheet()
 
     try:
-        pdfmetrics.registerFont(TTFont('ARLRDBD', 'Report_Generation_Customer_WebApp/ARLRDBD.TTF'))
-        pdfmetrics.registerFont(TTFont('ARIAL', 'Report_Generation_Customer_WebApp/ARIAL.TTF'))
-        styles["Heading1"].fontName = 'ARLRDBD'
-        styles["Normal"].fontName = 'ARIAL'
+        pdfmetrics.registerFont(TTFont("ARLRDBD", "Report_Generation_Customer_WebApp/ARLRDBD.TTF"))
+        pdfmetrics.registerFont(TTFont("ARIAL", "Report_Generation_Customer_WebApp/ARIAL.TTF"))
+        styles["Heading1"].fontName = "ARLRDBD"
+        styles["Normal"].fontName = "ARIAL"
     except:
         pass
 
     heading_style_centered = ParagraphStyle(
-        "HeadingStyleCentered", parent=styles["Heading1"], fontSize=20, textColor=colors.darkblue,
-        alignment=1, spaceAfter=10, underline=True, bold=True,
+        "HeadingStyleCentered",
+        parent=styles["Heading1"],
+        fontSize=20,
+        textColor=colors.darkblue,
+        alignment=1,
+        spaceAfter=10,
+        underline=True,
+        bold=True,
     )
 
     heading_style_left = ParagraphStyle(
-        "HeadingStyleLeft", parent=styles["Heading1"], fontSize=20, textColor=colors.darkblue,
-        alignment=0, spaceAfter=10, underline=True, bold=True,
+        "HeadingStyleLeft",
+        parent=styles["Heading1"],
+        fontSize=20,
+        textColor=colors.darkblue,
+        alignment=0,
+        spaceAfter=10,
+        underline=True,
+        bold=True,
     )
 
     heading_style_sub = ParagraphStyle(
-        "HeadingStyleLeft", parent=styles["Heading1"], fontSize=16, textColor=colors.black,
-        alignment=0, spaceAfter=10, underline=True, bold=True,
+        "HeadingStyleLeft",
+        parent=styles["Heading1"],
+        fontSize=16,
+        textColor=colors.black,
+        alignment=0,
+        spaceAfter=10,
+        underline=True,
+        bold=True,
     )
 
     body_style = styles["Normal"]
     body_style.fontSize = 12
-    
+
     elements = []
     elements.append(Paragraph("TREBIRTH TEST REPORT", heading_style_centered))
     elements.append(Spacer(1, 16))
-    
+
     desc_lines = [
         "This Trebirth test report is a supplementary report only and is only a record of the test findings."
     ]
@@ -203,17 +237,21 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
             ["Tests were carried out by:", test_by],
             ["Date:", report_date],
             ["Report for location at:", report_loc],
-            ["Name of the building/apartment:", apartment_name]
+            ["Name of the building/apartment:", apartment_name],
         ]
         table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
-        table.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.black),
-            ('TEXTCOLOR', (1, 0), (1, -1), colors.darkblue),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.black)
-        ]))
+        table.setStyle(
+            TableStyle(
+                [
+                    ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("TEXTCOLOR", (0, 0), (0, -1), colors.black),
+                    ("TEXTCOLOR", (1, 0), (1, -1), colors.darkblue),
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                ]
+            )
+        )
         elements.append(table)
         elements.append(PageBreak())
 
@@ -224,27 +262,39 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
                 area_scans[area] = []
             area_scans[area].append(scan)
 
+        img_paths_to_delete = []
         for i, (area, scans) in enumerate(area_scans.items(), start=1):
             elements.append(Paragraph(f"{i} {area.upper()}", heading_style_left))
             for j, scan in enumerate(scans, start=1):
                 elements.append(Paragraph(f"{i}.{j} Radar Scan", heading_style_sub))
-                
-                radar_raw = scan.get('RadarRaw', [])
+
+                radar_raw = scan.get("RadarRaw", [])
                 if radar_raw:
                     processed_scan = preprocess_radar_data(radar_raw)
-                    device_name = scan.get('Devicename', 'Unknown Device')
-                    timestamp = scan.get('timestamp', datetime.now())
+                    device_name = scan.get("Devicename", "Unknown Device")
+                    timestamp = scan.get("timestamp", datetime.now())
                     scan_duration = scan.get("ScanDuration", "Unknown")
                     fig = plot_time_domain(processed_scan, device_name, timestamp, scan_duration)
+
                     img_path = f"{tempfile.gettempdir()}/time_domain_plot_{i}_{j}.png"
                     pio.write_image(fig, img_path, format="png")
+                    time.sleep(0.2)  # small delay for file system write
 
-                    elements.append(Image(img_path, width=400, height=300))
+                    if os.path.isfile(img_path):
+                        elements.append(Image(img_path, width=400, height=300))
+                        img_paths_to_delete.append(img_path)
+                    else:
+                        st.error(f"Image file not found: {img_path}")
+
                     elements.append(Spacer(1, 12))
 
                     elements.append(Paragraph(f"Device Name: {device_name}", body_style))
                     elements.append(Spacer(1, 3))
-                    elements.append(Paragraph(f"Timestamp: {datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')}", body_style))
+                    try:
+                        ts_obj = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        ts_obj = timestamp
+                    elements.append(Paragraph(f"Timestamp: {ts_obj}", body_style))
                     elements.append(Spacer(1, 3))
                     elements.append(Paragraph(f"Scan Duration: {scan_duration}", body_style))
                     elements.append(Spacer(1, 12))
@@ -255,20 +305,27 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
                         ["Damage Visible:", scan.get("DamageVisible", "N/A")],
                     ]
                     table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
-                    table.setStyle(TableStyle([
-                        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-                        ('ALIGN', (1, 0), (-1, -1), 'LEFT'),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-                    ]))
+                    table.setStyle(
+                        TableStyle(
+                            [
+                                ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                                ("ALIGN", (1, 0), (-1, -1), "LEFT"),
+                                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                            ]
+                        )
+                    )
                     elements.append(table)
                     elements.append(Spacer(1, 20))
 
-                    try:
-                        os.remove(img_path)
-                    except:
-                        pass
+        doc.build(elements)
 
-    doc.build(elements)
+        # Delete image files after PDF build
+        for path in img_paths_to_delete:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
     return pdf_path
 
 def main():
@@ -304,8 +361,11 @@ def main():
 
         scan_months = set()
         for scan in scans_data:
-            if scan["City"].strip() == selected_location and scan["Area"].strip() == selected_area:
-                scan_date_obj = datetime.strptime(scan.get("scan_date", "1970-01-01"), '%Y-%m-%d')
+            if (
+                scan["City"].strip() == selected_location
+                and scan["Area"].strip() == selected_area
+            ):
+                scan_date_obj = datetime.strptime(scan.get("scan_date", "1970-01-01"), "%Y-%m-%d")
                 scan_months.add(scan_date_obj.strftime("%Y-%m"))
 
         scan_months = sorted(list(scan_months))
@@ -315,7 +375,8 @@ def main():
 
     if selected_location and selected_area and selected_month:
         final_scans = [
-            scan for scan in scans_data
+            scan
+            for scan in scans_data
             if scan["City"].strip() == selected_location
             and scan["Area"].strip() == selected_area
             and scan.get("scan_date", "1970-01-01").startswith(selected_month)
@@ -333,18 +394,25 @@ def main():
                 apartments[apt].append(scan)
 
             col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-            with col1: st.write("**Apartment**")
-            with col2: st.write("**Date of Scan**")
-            with col3: st.write("**Incharge**")
-            with col4: st.write("**Download PDF**")
+            with col1:
+                st.write("**Apartment**")
+            with col2:
+                st.write("**Date of Scan**")
+            with col3:
+                st.write("**Incharge**")
+            with col4:
+                st.write("**Download PDF**")
             st.markdown("---")
 
             for apartment, scans in apartments.items():
                 first_scan = scans[0]
                 col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-                with col1: st.write(apartment)
-                with col2: st.write(first_scan.get("scan_date", "Unknown Date"))
-                with col3: st.write(first_scan.get("Incharge", "N/A"))
+                with col1:
+                    st.write(apartment)
+                with col2:
+                    st.write(first_scan.get("scan_date", "Unknown Date"))
+                with col3:
+                    st.write(first_scan.get("Incharge", "N/A"))
                 with col4:
                     if st.button("Download PDF", key=f"pdf_{apartment}_{selected_month}_{selected_area}"):
                         with st.spinner(f"Generating PDF for {apartment}..."):
@@ -356,7 +424,7 @@ def main():
                                         data=file,
                                         file_name=f"Trebirth_Report_{apartment}_{selected_month}.pdf",
                                         mime="application/pdf",
-                                        key=f"download_{apartment}_{selected_month}_{selected_area}"
+                                        key=f"download_{apartment}_{selected_month}_{selected_area}",
                                     )
                                 os.remove(pdf_file)
                             except Exception as e:
@@ -364,12 +432,12 @@ def main():
                 st.markdown("---")
 
             df = pd.DataFrame(final_scans)
-            csv = df.to_csv(index=False).encode('utf-8')
+            csv = df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 label="Download All Data as CSV",
                 data=csv,
                 file_name=f"trebirth_scans_{selected_area}_{selected_month}.csv",
-                mime="text/csv"
+                mime="text/csv",
             )
         else:
             st.warning("No scans available for the selected criteria.")
