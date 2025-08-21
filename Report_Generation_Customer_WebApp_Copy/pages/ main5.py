@@ -35,7 +35,10 @@ import kaleido
 
 #kaleido.get_chrome_sync()
 os.environ["BROWSER_PATH"] = "/usr/bin/chromium"  
-st.set_page_config(layout="wide")
+
+# Configure Page 
+st.set_page_config(page_title="Customer Report Viewer", layout="wide")
+
 # Redirect to login page if not authenticated
 if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
     st.warning("Please log in first.")
