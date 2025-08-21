@@ -1,54 +1,35 @@
 import streamlit as st
 from google.cloud import firestore
-import google.auth
 import pandas as pd
-from google.cloud.firestore import FieldFilter
-from io import BytesIO
-import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
+from datetime import datetime
 import numpy as np
 import time
-import zipfile
 import os
-import pytz
 import random
-from scipy import signal
-from scipy.stats import skew, kurtosis
-from collections import defaultdict
-import matplotlib.dates as mdates
-import plotly.express as px
-import plotly.graph_objects as go
-from google.api_core.exceptions import ResourceExhausted, RetryError
+import tempfile
+import plotly.io as pio
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak, Table, TableStyle
-from reportlab.pdfgen import canvas
-from reportlab.graphics.shapes import Line
-import tempfile
-import base64
-import plotly.io as pio
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-import kaleido
+from google.api_core.exceptions import ResourceExhausted, RetryError
 
 # Set browser path for kaleido
 os.environ["BROWSER_PATH"] = "/usr/bin/chromium"  
 st.set_page_config(layout="wide", page_title="Trebirth Scan Report Viewer")
 
-# Redirect to login page if not authenticated
 if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
     st.warning("Please log in first.")
     st.switch_page("main4.py")
 
-# Initialize authentication state
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 if "company" not in st.session_state:
     st.session_state["company"] = None
 
-# Define company login credentials
 company_credentials = {
     "Hlabs": "H2025$$",
     "Ilabs": "I2025$$",
@@ -58,7 +39,6 @@ company_credentials = {
 }
 
 def logout():
-    """Handle logout"""
     st.session_state["authenticated"] = False
     st.session_state["company"] = None
     for key in list(st.session_state.keys()):
@@ -66,7 +46,6 @@ def logout():
             del st.session_state[key]
     st.rerun()
 
-# Initialize Firestore
 @st.cache_resource
 def init_firestore():
     try:
@@ -88,7 +67,6 @@ def exponential_backoff(retries):
 def fetch_data(company_name):
     if not db:
         return [], {}, []
-    
     query = db.collection('homescan2')
     docs = query.stream()
 
@@ -118,10 +96,184 @@ def fetch_data(company_name):
 
     return sorted(locations), city_to_areas, scans_data
 
+def preprocess_radar_data(radar_raw):
+    import pandas as pd
+    df_radar = pd.DataFrame(radar_raw, columns=['Radar'])
+    df_radar.dropna(inplace=True)
+    df_radar.fillna(df_radar.mean(), inplace=True)
+    return df_radar
+
+def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, sampling_rate=100):
+    import plotly.graph_objects as go
+    fig = go.Figure()
+    time_seconds = np.arange(len(preprocessed_scan)) / sampling_rate
+    fig.add_trace(go.Scatter(
+        x=time_seconds,
+        y=preprocessed_scan['Radar'],
+        mode='lines',
+        name=f"{device_name} - Unknown Timestamp",
+        line=dict(color='blue')
+    ))
+    fig.update_layout(
+        template='plotly_white',
+        xaxis_title=None,
+        yaxis_title=None,
+        xaxis=dict(showticklabels=False),
+        yaxis=dict(showticklabels=False),
+        legend_title="Scan",
+        font=dict(color="black"),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=100, r=100, t=100, b=100),
+        shapes=[dict(
+            type='rect',
+            x0=0,
+            y0=0,
+            x1=1,
+            y1=1,
+            xref='paper',
+            yref='paper',
+            line=dict(
+                color="black",
+                width=2
+            )
+        )]
+    )
+    return fig
+
+def generate_pdf_for_apartment(apartment_scans, company_name):
+    import matplotlib.pyplot as plt
+    import plotly.io as pio
+    import os
+    import tempfile
+    pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
+    
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4)
+    styles = getSampleStyleSheet()
+
+    try:
+        pdfmetrics.registerFont(TTFont('ARLRDBD', 'Report_Generation_Customer_WebApp/ARLRDBD.TTF'))
+        pdfmetrics.registerFont(TTFont('ARIAL', 'Report_Generation_Customer_WebApp/ARIAL.TTF'))
+        styles["Heading1"].fontName = 'ARLRDBD'
+        styles["Normal"].fontName = 'ARIAL'
+    except:
+        pass
+
+    heading_style_centered = ParagraphStyle(
+        "HeadingStyleCentered", parent=styles["Heading1"], fontSize=20, textColor=colors.darkblue,
+        alignment=1, spaceAfter=10, underline=True, bold=True,
+    )
+
+    heading_style_left = ParagraphStyle(
+        "HeadingStyleLeft", parent=styles["Heading1"], fontSize=20, textColor=colors.darkblue,
+        alignment=0, spaceAfter=10, underline=True, bold=True,
+    )
+
+    heading_style_sub = ParagraphStyle(
+        "HeadingStyleLeft", parent=styles["Heading1"], fontSize=16, textColor=colors.black,
+        alignment=0, spaceAfter=10, underline=True, bold=True,
+    )
+
+    body_style = styles["Normal"]
+    body_style.fontSize = 12
+    
+    elements = []
+    elements.append(Paragraph("TREBIRTH TEST REPORT", heading_style_centered))
+    elements.append(Spacer(1, 16))
+    
+    desc_lines = [
+        "This Trebirth test report is a supplementary report only and is only a record of the test findings."
+    ]
+    for line in desc_lines:
+        elements.append(Paragraph(line, body_style))
+        elements.append(Spacer(1, 6))
+
+    elements.append(Spacer(1, 20))
+
+    if not apartment_scans:
+        elements.append(Paragraph("No data found.", body_style))
+    else:
+        first_scan = apartment_scans[0]
+        test_by = first_scan["CompanyName"]
+        report_loc = first_scan["City"]
+        apartment_name = first_scan["Apartment"]
+        report_date = first_scan["scan_date"]
+
+        data = [
+            ["Tests were carried out by:", test_by],
+            ["Date:", report_date],
+            ["Report for location at:", report_loc],
+            ["Name of the building/apartment:", apartment_name]
+        ]
+        table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
+        table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.black),
+            ('TEXTCOLOR', (1, 0), (1, -1), colors.darkblue),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black)
+        ]))
+        elements.append(table)
+        elements.append(PageBreak())
+
+        area_scans = {}
+        for scan in apartment_scans:
+            area = scan.get("Room", "Unknown Area")
+            if area not in area_scans:
+                area_scans[area] = []
+            area_scans[area].append(scan)
+
+        for i, (area, scans) in enumerate(area_scans.items(), start=1):
+            elements.append(Paragraph(f"{i} {area.upper()}", heading_style_left))
+            for j, scan in enumerate(scans, start=1):
+                elements.append(Paragraph(f"{i}.{j} Radar Scan", heading_style_sub))
+                
+                radar_raw = scan.get('RadarRaw', [])
+                if radar_raw:
+                    processed_scan = preprocess_radar_data(radar_raw)
+                    device_name = scan.get('Devicename', 'Unknown Device')
+                    timestamp = scan.get('timestamp', datetime.now())
+                    scan_duration = scan.get("ScanDuration", "Unknown")
+                    fig = plot_time_domain(processed_scan, device_name, timestamp, scan_duration)
+                    img_path = f"{tempfile.gettempdir()}/time_domain_plot_{i}_{j}.png"
+                    pio.write_image(fig, img_path, format="png")
+
+                    elements.append(Image(img_path, width=400, height=300))
+                    elements.append(Spacer(1, 12))
+
+                    elements.append(Paragraph(f"Device Name: {device_name}", body_style))
+                    elements.append(Spacer(1, 3))
+                    elements.append(Paragraph(f"Timestamp: {datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')}", body_style))
+                    elements.append(Spacer(1, 3))
+                    elements.append(Paragraph(f"Scan Duration: {scan_duration}", body_style))
+                    elements.append(Spacer(1, 12))
+
+                    data = [
+                        ["Scan Location:", scan.get("Room", "N/A")],
+                        ["Device was:", scan.get("Positioned", "N/A")],
+                        ["Damage Visible:", scan.get("DamageVisible", "N/A")],
+                    ]
+                    table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
+                    table.setStyle(TableStyle([
+                        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                        ('ALIGN', (1, 0), (-1, -1), 'LEFT'),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ]))
+                    elements.append(table)
+                    elements.append(Spacer(1, 20))
+
+                    try:
+                        os.remove(img_path)
+                    except:
+                        pass
+
+    doc.build(elements)
+    return pdf_path
+
 def main():
     company_name = st.session_state["company"]
-    
-    # Custom CSS
+
     st.markdown(
         """
         <style>
@@ -136,41 +288,34 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # Sidebar
     with st.sidebar:
         st.title(f"Welcome, {company_name}!")
         if st.button("Logout", type="secondary"):
             logout()
-        
+
         st.markdown("---")
-        
-        # Fetch data
+
         locations, city_to_areas, scans_data = fetch_data(company_name)
 
-        # --- Location selection (single select) ---
-        st.subheader("Filters")
         selected_location = st.selectbox("Select Report Location:", locations, key="selected_location")
 
-        # --- Area selection (single select) ---
         filtered_areas = city_to_areas.get(selected_location, [])
         selected_area = st.selectbox("Select Report Area:", sorted(filtered_areas), key="selected_area")
 
-        # --- Month selection ---
         scan_months = set()
         for scan in scans_data:
             if scan["City"].strip() == selected_location and scan["Area"].strip() == selected_area:
                 scan_date_obj = datetime.strptime(scan.get("scan_date", "1970-01-01"), '%Y-%m-%d')
-                scan_months.add(scan_date_obj.strftime("%Y-%m"))  # "YYYY-MM"
+                scan_months.add(scan_date_obj.strftime("%Y-%m"))
 
         scan_months = sorted(list(scan_months))
         selected_month = st.selectbox("Select scan month:", scan_months, key="selected_month")
 
-    # --- Main content ---
     st.markdown('<h1 class="main-header">Trebirth Scan Report Viewer</h1>', unsafe_allow_html=True)
 
     if selected_location and selected_area and selected_month:
         final_scans = [
-            scan for scan in scans_data 
+            scan for scan in scans_data
             if scan["City"].strip() == selected_location
             and scan["Area"].strip() == selected_area
             and scan.get("scan_date", "1970-01-01").startswith(selected_month)
@@ -180,21 +325,44 @@ def main():
         if final_scans:
             st.subheader(f"All Scans for {selected_area} in {selected_month}")
 
-            # Show as table
-            col1, col2, col3 = st.columns([3, 2, 2])
+            apartments = {}
+            for scan in final_scans:
+                apt = scan.get("Apartment", "N/A")
+                if apt not in apartments:
+                    apartments[apt] = []
+                apartments[apt].append(scan)
+
+            col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
             with col1: st.write("**Apartment**")
             with col2: st.write("**Date of Scan**")
             with col3: st.write("**Incharge**")
+            with col4: st.write("**Download PDF**")
             st.markdown("---")
 
-            for scan in final_scans:
-                col1, col2, col3 = st.columns([3, 2, 2])
-                with col1: st.write(scan.get("Apartment", "N/A"))
-                with col2: st.write(scan.get("scan_date", "Unknown Date"))
-                with col3: st.write(scan.get("Incharge", "N/A"))
+            for apartment, scans in apartments.items():
+                first_scan = scans[0]
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+                with col1: st.write(apartment)
+                with col2: st.write(first_scan.get("scan_date", "Unknown Date"))
+                with col3: st.write(first_scan.get("Incharge", "N/A"))
+                with col4:
+                    if st.button("Download PDF", key=f"pdf_{apartment}_{selected_month}_{selected_area}"):
+                        with st.spinner(f"Generating PDF for {apartment}..."):
+                            try:
+                                pdf_file = generate_pdf_for_apartment(scans, company_name)
+                                with open(pdf_file, "rb") as file:
+                                    st.download_button(
+                                        label=f"Download {apartment} Report",
+                                        data=file,
+                                        file_name=f"Trebirth_Report_{apartment}_{selected_month}.pdf",
+                                        mime="application/pdf",
+                                        key=f"download_{apartment}_{selected_month}_{selected_area}"
+                                    )
+                                os.remove(pdf_file)
+                            except Exception as e:
+                                st.error(f"Error generating PDF: {str(e)}")
                 st.markdown("---")
 
-            # CSV Export
             df = pd.DataFrame(final_scans)
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
