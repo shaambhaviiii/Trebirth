@@ -85,7 +85,7 @@ def fetch_data(company_name):
     # Fetch scan data from Firestore filtered by company name
     if not db:
         return [], {}, []
-    query = db.collection("homescan2")
+    query = db.collection("pestcontrolindia")
     docs = query.stream()
 
     locations = set()
