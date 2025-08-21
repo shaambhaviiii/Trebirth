@@ -448,14 +448,14 @@ def main():
                 st.markdown("---")
 
             # Button to download all filtered data as CSV
-            df = pd.DataFrame(final_scans)
-            csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="Download All Data as CSV",
-                data=csv,
-                file_name=f"trebirth_scans_{selected_area}_{selected_month}.csv",
-                mime="text/csv",
-            )
+            #df = pd.DataFrame(final_scans)
+            #csv = df.to_csv(index=False).encode("utf-8")
+            #st.download_button(
+                #label="Download All Data as CSV",
+                #data=csv,
+                #file_name=f"trebirth_scans_{selected_area}_{selected_month}.csv",
+                #mime="text/csv",
+            #)
         else:
             st.warning("No scans available for the selected criteria.")
     else:
