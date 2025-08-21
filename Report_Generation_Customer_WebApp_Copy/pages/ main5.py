@@ -39,6 +39,52 @@ os.environ["BROWSER_PATH"] = "/usr/bin/chromium"
 # Configure Page 
 st.set_page_config(page_title="Customer Report Viewer", layout="wide")
 
+# Initialize session state variables
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+if "company" not in st.session_state:
+    st.session_state["company"] = None
+if "selected_location" not in st.session_state:
+    st.session_state["selected_location"] = None
+if "selected_area" not in st.session_state:
+    st.session_state["selected_area"] = None
+if "selected_date" not in st.session_state:
+    st.session_state["selected_date"] = None
+if "selected_apartments" not in st.session_state:
+    st.session_state["selected_apartments"] = []
+
+# Company credentials (you can replace or load from a config)
+company_credentials = {
+    "Hlabs": "H2025$$",
+    "Ilabs": "I2025$$",
+    "PCI": "P2025$$",
+    "Vlabs": "V2025$$",
+    "Trebirth": "T2025$$"
+}
+
+def login_form():
+    st.sidebar.title("Login")
+    company = st.sidebar.text_input("Company Name")
+    password = st.sidebar.text_input("Password", type="password")
+    if st.sidebar.button("Login"):
+        if company in company_credentials and company_credentials[company] == password:
+            st.session_state["authenticated"] = True
+            st.session_state["company"] = company
+            st.sidebar.success(f"Login successful! Welcome, {company}.")
+            st.rerun()
+        else:
+            st.sidebar.error("Invalid company name or password")
+            
+def logout():
+    if st.sidebar.button("Logout"):
+        st.session_state["authenticated"] = False
+        st.session_state["company"] = None
+        st.session_state["selected_location"] = None
+        st.session_state["selected_area"] = None
+        st.session_state["selected_date"] = None
+        st.session_state["selected_apartments"] = []
+        st.rerun()
+
 # Redirect to login page if not authenticated
 if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
     st.warning("Please log in first.")
