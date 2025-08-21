@@ -391,11 +391,11 @@ def generate_pdf():
                     elements.append(Spacer(1, 12))
                 
                     data = [
-                        ["Scan Location:", filtered_scans[0].get("Room", "N/A")],
+                        ["Scan Location:", scans.get("Room", "N/A")],
                         #["Scan Date:", filtered_scans[0].get("scan_date", "Unknown Date")],
-                        ["Device was:", filtered_scans[0].get("Positioned", "N/A")],
+                        ["Device was:", scans.get("Positioned", "N/A")],
                         #["Termatrac device position:", filtered_scans[0].get("Compass", "N/A")],
-                        ["Damage Visible:", filtered_scans[0].get("DamageVisible", "N/A")],
+                        ["Damage Visible:", scans.get("DamageVisible", "N/A")],
                     ]
                     table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
                     table.setStyle(TableStyle([
