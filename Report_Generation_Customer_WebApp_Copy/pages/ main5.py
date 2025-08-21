@@ -146,20 +146,26 @@ def sidebar_filters():
     # Fetch data for the logged-in company
     locations, city_to_areas, scans_data = fetch_data(st.session_state["company"])
     
-    # Location selection
+    # Location selection index calculation
+    if st.session_state["selected_location"] is None:
+        location_index = 0
+    else:
+        try:
+            location_index = 1 + locations.index(st.session_state["selected_location"])
+        except ValueError:
+            location_index = 0
+
     selected_location = st.sidebar.selectbox(
         "Select Report Location:",
         ["All"] + locations,
-        index=0 if st.session_state["selected_location"] is None else 
-              ["All"] + locations.index(st.session_state["selected_location"]) + 1
+        index=location_index
     )
-    
     if selected_location != "All":
         st.session_state["selected_location"] = selected_location
     else:
         st.session_state["selected_location"] = None
     
-    # Area selection based on selected location
+    # Area selection based on selected location index calculation
     filtered_areas = set()
     if st.session_state["selected_location"]:
         if st.session_state["selected_location"] in city_to_areas:
@@ -168,14 +174,21 @@ def sidebar_filters():
         for loc in locations:
             if loc in city_to_areas:
                 filtered_areas.update(city_to_areas[loc])
-    
+
+    filtered_areas_sorted = sorted(filtered_areas)
+    if st.session_state["selected_area"] is None:
+        area_index = 0
+    else:
+        try:
+            area_index = 1 + filtered_areas_sorted.index(st.session_state["selected_area"])
+        except ValueError:
+            area_index = 0
+
     selected_area = st.sidebar.selectbox(
         "Select Report Area:",
-        ["All"] + sorted(filtered_areas),
-        index=0 if st.session_state["selected_area"] is None else 
-              ["All"] + sorted(filtered_areas).index(st.session_state["selected_area"]) + 1
+        ["All"] + filtered_areas_sorted,
+        index=area_index
     )
-    
     if selected_area != "All":
         st.session_state["selected_area"] = selected_area
     else:
@@ -267,8 +280,8 @@ def generate_pdf_for_apartment(apartment_name, scans_data):
     
     if apartment_scans:
         test_by = apartment_scans[0]["CompanyName"]
-        report_loc = apartment_scans[0]["City"]
-        report_date = apartment_scans[0]["scan_date"]
+        report_loc = apartment_scans["City"]
+        report_date = apartment_scans["scan_date"]
         
         data = [
             ["Tests were carried out by:", test_by],
