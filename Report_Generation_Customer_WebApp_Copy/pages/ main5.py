@@ -125,8 +125,10 @@ def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, s
 
     fig.update_layout(
         template='plotly_white',
-        xaxis_title="Time (s)",
-        yaxis_title="Signal",
+        xaxis_title=None,  # Remove x-axis title
+        yaxis_title=None,  # Remove y-axis title
+        xaxis=dict(showticklabels=False),  # Hide x-axis tick labels
+        yaxis=dict(showticklabels=False),  # Hide y-axis tick labels
         legend_title="Scan",
         font=dict(color="black"),
         plot_bgcolor='rgba(0,0,0,0)',
@@ -285,14 +287,12 @@ def generate_pdf():
 
     
     elements = []
-    elements.append(Paragraph("TERMATRAC TEST REPORT", heading_style_centered))
-    elements.append(Paragraph("SUPPLEMENT TO TIMBER PEST REPORT", heading_style_centered))
+    elements.append(Paragraph("TREBIRTH TEST REPORT", heading_style_centered))
+    #elements.append(Paragraph("SUPPLEMENT TO TIMBER PEST REPORT", heading_style_centered))
     elements.append(Spacer(1, 16))
     
     desc_lines = [
-        "This Trebirth test report is a supplementary report only, which MUST be read in",
-        "conjunction with the full timber pest report. This report cannot be relied upon",
-        "without the full timber pest report and is only a record of the test findings."
+        "This Trebirth test report is a supplementary report only and is only a record of the test findings."
     ]
     
     for line in desc_lines:
@@ -313,7 +313,7 @@ def generate_pdf():
     else:
         test_by = filtered_scans[0]["CompanyName"]
         report_loc = filtered_scans[0]["City"]
-        requested_by = filtered_scans[0]["ReportRequestedBy"]
+        apartment_name = filtered_scans[0]["Apartment"]
         report_date = filtered_scans[0]["scan_date"]
         
         # Split the general information into multiple lines and add a Spacer after each line
@@ -321,8 +321,8 @@ def generate_pdf():
         data = [
             ["Tests were carried out by:", test_by],
             ["Date:", report_date],
-            ["Report for building at:", report_loc],
-            ["Report requested by:", requested_by]
+            ["Report for location at:", report_loc],
+            ["Name of the building/apartment:", apartment_name]
         ]
 
         # Create the table
@@ -359,9 +359,9 @@ def generate_pdf():
                 if radar_raw:
                     processed_scan = preprocess_radar_data(radar_raw)
                     device_name = scan.get('Devicename', 'Unknown Device')
-                    Sampling_rate = scan.get("SamplingRate", "Unknown")
-                    How_used = scan.get("HowUsed", "Unknown")
-                    Battery = scan.get("Battery", "Unknown")
+                    #Sampling_rate = scan.get("SamplingRate", "Unknown")
+                    #How_used = scan.get("HowUsed", "Unknown")
+                    #Battery = scan.get("Battery", "Unknown")
                     timestamp = scan.get('timestamp', datetime.now())
                     scan_duration = scan.get("ScanDuration", "Unknown")
                     
@@ -381,20 +381,20 @@ def generate_pdf():
                     elements.append(Spacer(1, 3))
                     elements.append(Paragraph(f"Timestamp: {datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')}", body_style))
                     elements.append(Spacer(1, 3))
-                    elements.append(Paragraph(f"Sampling Rate: {Sampling_rate}", body_style))
-                    elements.append(Spacer(1, 3))
-                    elements.append(Paragraph(f"Battery: {Battery}", body_style))
-                    elements.append(Spacer(1, 3))
-                    elements.append(Paragraph(f"Howused: {How_used}", body_style))
-                    elements.append(Spacer(1, 3))
+                    #elements.append(Paragraph(f"Sampling Rate: {Sampling_rate}", body_style))
+                    #elements.append(Spacer(1, 3))
+                    #elements.append(Paragraph(f"Battery: {Battery}", body_style))
+                    #elements.append(Spacer(1, 3))
+                    #elements.append(Paragraph(f"Howused: {How_used}", body_style))
+                    #elements.append(Spacer(1, 3))
                     elements.append(Paragraph(f"Scan Duration: {scan_duration}", body_style))
                     elements.append(Spacer(1, 12))
                 
                     data = [
                         ["Scan Location:", filtered_scans[0].get("Room", "N/A")],
-                        ["Scan Date:", filtered_scans[0].get("scan_date", "Unknown Date")],
-                        ["Termatrac device was:", filtered_scans[0].get("Positioned", "N/A")],
-                        ["Termatrac device position:", filtered_scans[0].get("Compass", "N/A")],
+                        #["Scan Date:", filtered_scans[0].get("scan_date", "Unknown Date")],
+                        ["Device was:", filtered_scans[0].get("Positioned", "N/A")],
+                        #["Termatrac device position:", filtered_scans[0].get("Compass", "N/A")],
                         ["Damage Visible:", filtered_scans[0].get("DamageVisible", "N/A")],
                     ]
                     table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
@@ -421,6 +421,6 @@ if st.button("Generate PDF Report"):
         st.download_button(
             label="Download PDF",
             data=file,
-            file_name="Trebirth_Termatrac_Test_Report.pdf",
+            file_name="Trebirth_Test_Report.pdf",
             mime="application/pdf",
         )
