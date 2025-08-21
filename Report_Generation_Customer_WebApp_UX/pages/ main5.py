@@ -377,7 +377,7 @@ def main():
         
         # Location selection
         st.subheader("Filters")
-        selected_locations = st.multiselect("Select Report Location:", locations, key="selected_locations")
+        selected_locations = st.selectbox("Select Report Location:", locations, key="selected_locations")
         
         # Area selection
         filtered_areas = set()
@@ -385,7 +385,7 @@ def main():
             if loc in city_to_areas:
                 filtered_areas.update(city_to_areas[loc])
         
-        selected_areas = st.multiselect("Select Report Area:", sorted(filtered_areas), key="selected_areas")
+        selected_areas = st.selectbox("Select Report Area:", sorted(filtered_areas), key="selected_areas")
         
         # Date selection
         selected_date = st.date_input("Select scan date:", key="selected_date")
@@ -411,7 +411,7 @@ def main():
         
         if apartments_info:
             st.subheader("Select Apartments")
-            selected_apartments = st.multiselect(
+            selected_apartments = st.selectbox(
                 "Choose apartments:",
                 options=list(apartments_info.keys()),
                 format_func=lambda x: f"{x} (Incharge: {apartments_info[x]})",
