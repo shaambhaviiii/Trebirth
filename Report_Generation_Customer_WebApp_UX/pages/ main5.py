@@ -2,7 +2,7 @@ import streamlit as st
 from google.cloud import firestore
 import pandas as pd
 from datetime import datetime
-from dateutil import parser  # pip install python-dateutil
+from dateutil import parser  # pip install python-dateutil for flexible date parsing
 import numpy as np
 import time
 import os
@@ -43,7 +43,7 @@ if "authenticated" not in st.session_state:
 if "company" not in st.session_state:
     st.session_state["company"] = None
 
-# Predefined company credentials (used elsewhere)
+# Predefined company credentials (not directly used here)
 company_credentials = {
     "Hlabs": "H2025$$",
     "Ilabs": "I2025$$",
@@ -53,7 +53,7 @@ company_credentials = {
 }
 
 def logout():
-    # Clear authentication and company from session state and relevant selections
+    # Clear authentication and company from session state and relevant filters/selections
     st.session_state["authenticated"] = False
     st.session_state["company"] = None
     for key in list(st.session_state.keys()):
@@ -63,7 +63,7 @@ def logout():
 
 @st.cache_resource
 def init_firestore():
-    # Initialize Firestore client using secrets from Streamlit
+    # Initialize Firestore client from streamlit secrets
     try:
         return firestore.Client.from_service_account_info(st.secrets["firebase_admin"])
     except Exception:
@@ -75,7 +75,7 @@ def init_firestore():
 db = init_firestore()
 
 def exponential_backoff(retries):
-    # Exponential backoff with jitter to delay retries upon failures
+    # Exponential backoff with jitter used for retry delays on Firestore quota/exceptions
     base_delay = 1
     max_delay = 60
     delay = base_delay * (2 ** retries) + random.uniform(0, 1)
@@ -83,7 +83,7 @@ def exponential_backoff(retries):
 
 @st.cache_data
 def fetch_data(company_name):
-    # Fetch scan data from Firestore filtered by company name
+    # Fetch data from Firestore pestcontrolindia collection for given company
     if not db:
         return [], {}, []
     query = db.collection("pestcontrolindia")
@@ -108,22 +108,23 @@ def fetch_data(company_name):
                         city_to_areas[location] = set()
                     city_to_areas[location].add(area)
 
-            # Parse timestamp to create a formatted scan_date string
+            # Parse timestamp string with flexible parser, fallback to "Unknown Date"
             timestamp_str = data.get("timestamp")
             scan_date = "Unknown Date"
             if timestamp_str:
                 try:
-                    # Automatically parse various string timestamp formats to datetime
                     dt = parser.parse(str(timestamp_str))
                     scan_date = dt.strftime("%Y-%m-%d")
                 except Exception:
                     scan_date = "Unknown Date"
 
+            data["scan_date"] = scan_date
+            scans_data.append(data)
+
     return sorted(locations), city_to_areas, scans_data
 
 def preprocess_radar_data(radar_raw):
-    # Convert radar raw data list into pandas DataFrame,
-    # drop missing data and substitute missing values with mean
+    # Process raw radar list into cleaned pandas DataFrame with no missing values
     import pandas as pd
 
     df_radar = pd.DataFrame(radar_raw, columns=["Radar"])
@@ -132,7 +133,7 @@ def preprocess_radar_data(radar_raw):
     return df_radar
 
 def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, sampling_rate=100):
-    # Create Plotly line chart for radar scan signal over time
+    # Create Plotly line plot of radar values over time with minimal axes
     import plotly.graph_objects as go
 
     fig = go.Figure()
@@ -146,7 +147,6 @@ def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, s
             line=dict(color="blue"),
         )
     )
-    # Customize plot layout to hide axis labels and add border
     fig.update_layout(
         template="plotly_white",
         xaxis_title=None,
@@ -174,7 +174,7 @@ def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, s
     return fig
 
 def generate_pdf_for_apartment(apartment_scans, company_name):
-    # Generate a PDF report for an apartment with scan details and charts
+    # Generate PDF report for 1 apartment and its scans including images and metadata
     import plotly.io as pio
     import os
     import tempfile
@@ -187,67 +187,38 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
     styles = getSampleStyleSheet()
 
     try:
-        # Register custom fonts if available
         pdfmetrics.registerFont(TTFont("ARLRDBD", "Report_Generation_Customer_WebApp/ARLRDBD.TTF"))
         pdfmetrics.registerFont(TTFont("ARIAL", "Report_Generation_Customer_WebApp/ARIAL.TTF"))
         styles["Heading1"].fontName = "ARLRDBD"
         styles["Normal"].fontName = "ARIAL"
     except:
-        # Fallback to default fonts
         pass
 
-    # Define paragraph styles for headings and body
+    # Paragraph styles
     heading_style_centered = ParagraphStyle(
-        "HeadingStyleCentered",
-        parent=styles["Heading1"],
-        fontSize=20,
-        textColor=colors.darkblue,
-        alignment=1,
-        spaceAfter=10,
-        underline=True,
-        bold=True,
+        "HeadingStyleCentered", parent=styles["Heading1"], fontSize=20,
+        textColor=colors.darkblue, alignment=1, spaceAfter=10, underline=True, bold=True
     )
 
     heading_style_left = ParagraphStyle(
-        "HeadingStyleLeft",
-        parent=styles["Heading1"],
-        fontSize=20,
-        textColor=colors.darkblue,
-        alignment=0,
-        spaceAfter=10,
-        underline=True,
-        bold=True,
+        "HeadingStyleLeft", parent=styles["Heading1"], fontSize=20,
+        textColor=colors.darkblue, alignment=0, spaceAfter=10, underline=True, bold=True
     )
 
     heading_style_sub = ParagraphStyle(
-        "HeadingStyleLeft",
-        parent=styles["Heading1"],
-        fontSize=16,
-        textColor=colors.black,
-        alignment=0,
-        spaceAfter=10,
-        underline=True,
-        bold=True,
+        "HeadingStyleLeft", parent=styles["Heading1"], fontSize=16,
+        textColor=colors.black, alignment=0, spaceAfter=10, underline=True, bold=True
     )
 
-    # Body text style
     body_style = styles["Normal"]
     body_style.fontSize = 12
 
     elements = []
-    # Add main report title and spacing
+    # Headings and description
     elements.append(Paragraph("TREBIRTH TEST REPORT", heading_style_centered))
-    elements.append(Spacer(1, 16))
-
-    # Add report description lines
-    desc_lines = [
-        "This Trebirth test report is a supplementary report only and is only a record of the test findings."
-    ]
-    for line in desc_lines:
-        elements.append(Paragraph(line, body_style))
-        elements.append(Spacer(1, 6))
-
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1,16))
+    elements.append(Paragraph("This Trebirth test report is a supplementary report only and is only a record of the test findings.", body_style))
+    elements.append(Spacer(1,20))
 
     if not apartment_scans:
         elements.append(Paragraph("No data found.", body_style))
@@ -258,30 +229,28 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
         apartment_name = first_scan["Apartment"]
         report_date = first_scan["scan_date"]
 
-        # Add summary info table at the start of report
+        # Summary table in PDF header
         data = [
             ["Tests were carried out by:", test_by],
             ["Date:", report_date],
             ["Report for location at:", report_loc],
             ["Name of the building/apartment:", apartment_name],
         ]
-        table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
+        table = Table(data, colWidths=[2.5*inch, 3.5*inch])
         table.setStyle(
-            TableStyle(
-                [
-                    ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("TEXTCOLOR", (0, 0), (0, -1), colors.black),
-                    ("TEXTCOLOR", (1, 0), (1, -1), colors.darkblue),
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-                ]
-            )
+            TableStyle([
+                ("ALIGN", (0,0), (-1,-1), "LEFT"),
+                ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+                ("TEXTCOLOR", (0,0), (0,-1), colors.black),
+                ("TEXTCOLOR", (1,0), (1,-1), colors.darkblue),
+                ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+                ("GRID", (0,0), (-1,-1), 0.5, colors.black)
+            ])
         )
         elements.append(table)
         elements.append(PageBreak())
 
-        # Organize scans grouped by room/area in the apartment
+        # Group scans by area/room
         area_scans = {}
         for scan in apartment_scans:
             area = scan.get("Room", "Unknown Area")
@@ -289,9 +258,9 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
                 area_scans[area] = []
             area_scans[area].append(scan)
 
-        img_paths_to_delete = []  # Track temp images for later cleanup
+        img_paths_to_delete = []
 
-        # Add radar scan data and images per area and scan
+        # Add scan data and images per area and scan
         for i, (area, scans) in enumerate(area_scans.items(), start=1):
             elements.append(Paragraph(f"{i} {area.upper()}", heading_style_left))
             for j, scan in enumerate(scans, start=1):
@@ -304,20 +273,19 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
                     timestamp = scan.get("timestamp", datetime.now())
                     scan_duration = scan.get("ScanDuration", "Unknown")
                     fig = plot_time_domain(processed_scan, device_name, timestamp, scan_duration)
-                    
-                    # Export plot as PNG image in temp directory
+
+                    # Save plot image temporarily
                     img_path = f"{tempfile.gettempdir()}/time_domain_plot_{i}_{j}.png"
                     pio.write_image(fig, img_path, format="png")
-                    time.sleep(0.2)  # Wait to ensure file is written
+                    time.sleep(0.2)  # Ensure file is fully written
 
-                    # Add image to PDF if file exists
+                    # Add image to PDF after confirming existence
                     if os.path.isfile(img_path):
                         elements.append(Image(img_path, width=400, height=300))
                         img_paths_to_delete.append(img_path)
                     else:
                         st.error(f"Image file not found: {img_path}")
 
-                    # Add scan metadata to report under image
                     elements.append(Spacer(1, 12))
                     elements.append(Paragraph(f"Device Name: {device_name}", body_style))
                     elements.append(Spacer(1, 3))
@@ -330,48 +298,39 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
                     elements.append(Paragraph(f"Scan Duration: {scan_duration}", body_style))
                     elements.append(Spacer(1, 12))
 
-                    # Additional scanning details table
+                    # Additional details table
                     data = [
                         ["Scan Location:", scan.get("Room", "N/A")],
                         ["Device was:", scan.get("Positioned", "N/A")],
                         ["Damage Visible:", scan.get("DamageVisible", "N/A")],
                     ]
-                    table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
+                    table = Table(data, colWidths=[2.5*inch, 3.5*inch])
                     table.setStyle(
-                        TableStyle(
-                            [
-                                ("ALIGN", (0, 0), (0, -1), "LEFT"),
-                                ("ALIGN", (1, 0), (-1, -1), "LEFT"),
-                                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                            ]
-                        )
+                        TableStyle([
+                            ("ALIGN", (0,0), (0,-1), "LEFT"),
+                            ("ALIGN", (1,0), (-1,-1), "LEFT"),
+                            ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+                        ])
                     )
                     elements.append(table)
-                    elements.append(Spacer(1, 20))
+                    elements.append(Spacer(1,20))
 
-        # Build PDF document
+        # Build the PDF document
         doc.build(elements)
 
-        # Clean up temporary images after PDF creation
+        # Clean up temporary plot images
         for path in img_paths_to_delete:
             try:
                 os.remove(path)
             except Exception:
                 pass
 
-    # Return file path for use in download button
     return pdf_path
 
 def main():
-    """
-    Main Streamlit app function:
-    - Shows sidebar filters and logout
-    - Loads and filters scan data
-    - Displays filtered scan reports table with download options
-    """
     company_name = st.session_state["company"]
 
-    # Custom CSS for page header
+    # Styling for page header
     st.markdown(
         """
         <style>
@@ -386,68 +345,68 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # Sidebar components
+    # Sidebar panel
     with st.sidebar:
         st.title(f"Welcome, {company_name}!")
 
-        # Logout button triggers session clearing and rerun
+        # Logout button clears session state and reruns the app
         if st.button("Logout", type="secondary"):
             logout()
 
         st.markdown("---")
 
-        # Fetch data for the logged-in company
+        # Fetch all data related to the company from Firestore
         locations, city_to_areas, scans_data = fetch_data(company_name)
 
-        # Sidebar: Select report location (single select)
+        # Select location filter (single choice)
         selected_location = st.selectbox("Select Report Location:", locations, key="selected_location")
 
-        # Sidebar: Select report area (filtered by location)
+        # Select area filter based on location (single choice)
         filtered_areas = city_to_areas.get(selected_location, [])
         selected_area = st.selectbox("Select Report Area:", sorted(filtered_areas), key="selected_area")
 
-        # Sidebar: Collect available months of scans for selected location/area
+        # Build list of available scan months based on filtered data
         scan_months = set()
         for scan in scans_data:
-            if (
-                scan["City"].strip() == selected_location
-                and scan["Area"].strip() == selected_area
-            ):
-                scan_date_obj = datetime.strptime(scan.get("scan_date", "1970-01-01"), "%Y-%m-%d")
-                scan_months.add(scan_date_obj.strftime("%Y-%m"))
+            if (scan.get("City", "").strip() == selected_location and scan.get("Area", "").strip() == selected_area):
+                try:
+                    scan_date_obj = datetime.strptime(scan.get("scan_date", "1970-01-01"), "%Y-%m-%d")
+                    scan_months.add(scan_date_obj.strftime("%Y-%m"))
+                except Exception:
+                    continue
 
-        # Sidebar: Select scan month (single select)
+
+        # Sort the months and display month selector
         scan_months = sorted(list(scan_months))
         selected_month = st.selectbox("Select scan month:", scan_months, key="selected_month")
 
-    # Convert selected scan month to pretty format ("MONTH YEAR", e.g. "MARCH 2025")
+    # Format the selected month for display as "MONTH YEAR"
     if selected_month:
         month_dt = datetime.strptime(selected_month, "%Y-%m")
         pretty_month_label = month_dt.strftime("%B %Y").upper()
     else:
         pretty_month_label = ""
 
-    # Main page title
+    # Main header
     st.markdown(f'<h1 class="main-header">Trebirth Scan Report Viewer</h1>', unsafe_allow_html=True)
 
-    # Check that all filters are selected before displaying data
     if selected_location and selected_area and selected_month:
-        # Filter scan data based on selections
+        # Filter scans according to selected filters
         final_scans = [
             scan
             for scan in scans_data
-            if scan["City"].strip() == selected_location
-            and scan["Area"].strip() == selected_area
+            if scan.get("City", "").strip() == selected_location
+            and scan.get("Area", "").strip() == selected_area
             and scan.get("scan_date", "1970-01-01").startswith(selected_month)
-            and scan["CompanyName"].strip() == company_name
+            and scan.get("CompanyName", "").strip() == company_name
         ]
 
         if final_scans:
-            # Show header with gap before table
+            # Display header and gap before table
             st.subheader(f"All Scans for {selected_area} in {pretty_month_label}")
             st.markdown("<div style='height:25px;'></div>", unsafe_allow_html=True)
 
-            # Group scans by apartment for display and PDF generation
+            # Group scans by apartment to organize display
             apartments = {}
             for scan in final_scans:
                 apt = scan.get("Apartment", "N/A")
@@ -455,30 +414,22 @@ def main():
                     apartments[apt] = []
                 apartments[apt].append(scan)
 
-            # Display table headers
+            # Table headers
             col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-            with col1:
-                st.write("**Apartment**")
-            with col2:
-                st.write("**Date of Scan**")
-            with col3:
-                st.write("**Incharge**")
-            with col4:
-                st.write("**Download PDF**")
+            with col1: st.write("**Apartment**")
+            with col2: st.write("**Date of Scan**")
+            with col3: st.write("**Incharge**")
+            with col4: st.write("**Download PDF**")
             st.markdown("---")
 
-            # Display each apartment's data row and download button
+            # Display each apartment scan info with download button
             for apartment, scans in apartments.items():
                 first_scan = scans[0]
                 col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-                with col1:
-                    st.write(apartment)
-                with col2:
-                    st.write(first_scan.get("scan_date", "Unknown Date"))
-                with col3:
-                    st.write(first_scan.get("Incharge", "N/A"))
+                with col1: st.write(apartment)
+                with col2: st.write(first_scan.get("scan_date", "Unknown Date"))
+                with col3: st.write(first_scan.get("Incharge", "N/A"))
                 with col4:
-                    # Download PDF button triggers PDF generation and download
                     if st.button("Download PDF", key=f"pdf_{apartment}_{selected_month}_{selected_area}"):
                         with st.spinner(f"Generating PDF for {apartment}..."):
                             try:
@@ -496,7 +447,7 @@ def main():
                                 st.error(f"Error generating PDF: {str(e)}")
                 st.markdown("---")
 
-            # Provide CSV download for all filtered scans combined
+            # Button to download all filtered data as CSV
             df = pd.DataFrame(final_scans)
             csv = df.to_csv(index=False).encode("utf-8")
             st.download_button(
@@ -506,12 +457,9 @@ def main():
                 mime="text/csv",
             )
         else:
-            # Show warning if no scans matched the filter criteria
             st.warning("No scans available for the selected criteria.")
     else:
-        # Inform the user to finish selecting filters before displaying scans
         st.info("Please make all selections in the sidebar to view available reports.")
-
 
 if __name__ == "__main__":
     main()
