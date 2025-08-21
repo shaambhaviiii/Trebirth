@@ -24,27 +24,22 @@ from reportlab.platypus import (
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from google.api_core.exceptions import ResourceExhausted, RetryError
-import base64
+from google.api_core.exceptions import RetryError, ResourceExhausted
 
-# Set browser path for kaleido (used for plotly image export)
+# Set browser path for kaleido
 os.environ["BROWSER_PATH"] = "/usr/bin/chromium"
 
-# Configure Streamlit page layout and title
-st.set_page_config(layout="wide", page_title="Trebirth Scan Report Viewer")
+st.set_page_config(layout="wide", page_title="Trebirth Scan Viewer")
 
-# Redirect to login page if user is not authenticated
-if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
-    st.warning("Please log in first.")
+if "authenticated" not in st.session_state or not st.session_state.get("authenticated", False):
+    st.warning("Please log in first")
     st.switch_page("main4.py")
 
-# Initialize authentication and company state variables if not set
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 if "company" not in st.session_state:
     st.session_state["company"] = None
 
-# Predefined company credentials (not directly used here)
 company_credentials = {
     "Hlabs": "H2025$$",
     "Ilabs": "I2025$$",
@@ -56,362 +51,231 @@ company_credentials = {
 def logout():
     st.session_state["authenticated"] = False
     st.session_state["company"] = None
-    for key in list(st.session_state.keys()):
-        if key.startswith(("selected_", "filtered_")):
-            del st.session_state[key]
-    st.rerun()
+    for k in list(st.session_state.keys()):
+        if k.startswith(("selected_", "filtered_")):
+            del st.session_state[k]
+    st.experimental_rerun()
 
 @st.cache_resource
 def init_firestore():
     try:
-        return firestore.Client.from_service_account_info(st.secrets["firebase_admin"])
+        return firestore.Client.from_service_account_info(st.secrets["firebase"])
     except Exception:
-        st.error("Firebase config not found in secrets, check configuration.")
+        st.error("Firebase configuration missing")
         st.stop()
         return None
 
 db = init_firestore()
 
-def exponential_backoff(retries):
-    base_delay = 1
-    max_delay = 60
-    delay = base_delay * (2 ** retries) + random.uniform(0, 1)
-    return min(delay, max_delay)
-
 @st.cache_data
-def fetch_data(company_name):
+def fetch_data(company):
     if not db:
         return [], {}, []
+
     query = db.collection("pestcontrolindia")
     docs = query.stream()
-
-    locations = set()
-    city_to_areas = {}
-    scans_data = []
+    locs = set()
+    city_areas = {}
+    scans = []
 
     for doc in docs:
-        data = doc.to_dict()
-        company = data.get("CompanyName", "").strip()
-
-        if company == company_name:
-            location = data.get("City", "").strip()
-            if location:
-                locations.add(location)
-
-                area = data.get("Area", "").strip()
+        d = doc.to_dict()
+        if d.get("CompanyName", "").strip() == company:
+            city = d.get("City", "").strip()
+            area = d.get("Area", "").strip()
+            if city:
+                locs.add(city)
                 if area:
-                    if location not in city_to_areas:
-                        city_to_areas[location] = set()
-                    city_to_areas[location].add(area)
-
-            timestamp_str = data.get("timestamp")
-            scan_date = "Unknown Date"
-            if timestamp_str:
+                    if city not in city_areas:
+                        city_areas[city] = set()
+                    city_areas[city].add(area)
+            ts_str = d.get("timestamp")
+            scan_date = "Unknown"
+            if ts_str:
                 try:
-                    dt = parser.parse(str(timestamp_str))
+                    dt = parser.parse(str(ts_str))
                     scan_date = dt.strftime("%Y-%m-%d")
-                except Exception:
-                    scan_date = "Unknown Date"
+                except:
+                    pass
+            d["scan_date"] = scan_date
+            scans.append(d)
+    return sorted(locs), city_areas, scans
 
-            data["scan_date"] = scan_date
-            scans_data.append(data)
-
-    return sorted(locations), city_to_areas, scans_data
-
-def preprocess_radar_data(radar_raw):
+def preprocess_radar_data(raw):
     import pandas as pd
+    df = pd.DataFrame(raw, columns=["Radar"])
+    df.dropna(inplace=True)
+    df.fillna(df.mean(), inplace=True)
+    return df
 
-    df_radar = pd.DataFrame(radar_raw, columns=["Radar"])
-    df_radar.dropna(inplace=True)
-    df_radar.fillna(df_radar.mean(), inplace=True)
-    return df_radar
-
-def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, sampling_rate=100):
+def plot_time_domain(scan_df, device_name, timestamp, scan_duration, sampling_rate=100):
     import plotly.graph_objects as go
-
     fig = go.Figure()
-    time_seconds = np.arange(len(preprocessed_scan)) / sampling_rate
-    fig.add_trace(
-        go.Scatter(
-            x=time_seconds,
-            y=preprocessed_scan["Radar"],
-            mode="lines",
-            name=f"{device_name} - Unknown Timestamp",
-            line=dict(color="blue"),
-        )
-    )
+    t = np.arange(len(scan_df)) / sampling_rate
+    fig.add_trace(go.Scatter(x=t, y=scan_df["Radar"], mode="lines", name=device_name, line=dict(color="blue")))
     fig.update_layout(
-        template="plotly_white",
-        xaxis_title=None,
-        yaxis_title=None,
-        xaxis=dict(showticklabels=False),
-        yaxis=dict(showticklabels=False),
-        legend_title="Scan",
-        font=dict(color="black"),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
+        template="plotly_white", xaxis={"showticklabels": False}, yaxis={"showticklabels": False},
+        legend_title="Scan", font={"color": "black"},
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=100, r=100, t=100, b=100),
-        shapes=[
-            dict(
-                type="rect",
-                x0=0,
-                y0=0,
-                x1=1,
-                y1=1,
-                xref="paper",
-                yref="paper",
-                line=dict(color="black", width=2),
-            )
-        ],
+        shapes=[dict(type="rect", x0=0, y0=0, x1=1, y1=1, xref="paper", yref="paper", line=dict(color="black", width=2))]
     )
     return fig
 
-def generate_pdf_for_apartment(apartment_scans, company_name):
+def generate_pdf(apartment_scans, company_name):
     import plotly.io as pio
     import os
     import tempfile
     import time
 
     pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
+
     doc = SimpleDocTemplate(pdf_path, pagesize=A4)
     styles = getSampleStyleSheet()
 
     try:
-        pdfmetrics.registerFont(TTFont("ARLRDBD", "Report_Generation_Customer_WebApp/ARLRDBD.TTF"))
-        pdfmetrics.registerFont(TTFont("ARIAL", "Report_Generation_Customer_WebApp/ARIAL.TTF"))
-        styles["Heading1"].fontName = "ARLRDBD"
-        styles["Normal"].fontName = "ARIAL"
+        pdfmetrics.registerFont(TTFont("Helvetica-bold", "Helvetica-bold.ttf"))
+        styles["Heading1"].fontName = "Helvetica-bold"
     except:
         pass
 
-    heading_style_centered = ParagraphStyle(
-        "HeadingStyleCentered", parent=styles["Heading1"], fontSize=20,
-        textColor=colors.darkblue, alignment=1, spaceAfter=10, underline=True, bold=True
-    )
-    heading_style_left = ParagraphStyle(
-        "HeadingStyleLeft", parent=styles["Heading1"], fontSize=20,
-        textColor=colors.darkblue, alignment=0, spaceAfter=10, underline=True, bold=True
-    )
-    heading_style_sub = ParagraphStyle(
-        "HeadingStyleLeft", parent=styles["Heading1"], fontSize=16,
-        textColor=colors.black, alignment=0, spaceAfter=10, underline=True, bold=True
-    )
-    body_style = styles["Normal"]
-    body_style.fontSize = 12
+    heading_center = ParagraphStyle("HeadingCenter", parent=styles["Heading1"], alignment=1, fontSize=20, textColor=colors.darkblue)
+    heading_left = ParagraphStyle("HeadingLeft", parent=styles["Heading1"], alignment=0, fontSize=18, textColor=colors.darkblue)
+    heading_sub = ParagraphStyle("HeadingSub", parent=styles["Heading1"], fontSize=16)
 
     elements = []
-    elements.append(Paragraph("TREBIRTH TEST REPORT", heading_style_centered))
-    elements.append(Spacer(1, 16))
-    desc_lines = [
-        "This Trebirth test report is a supplementary report only and is only a record of the test findings."
-    ]
-    for line in desc_lines:
-        elements.append(Paragraph(line, body_style))
-        elements.append(Spacer(1, 6))
+    elements.append(Paragraph("TREBIRTH SCAN REPORT", heading_center))
     elements.append(Spacer(1, 20))
 
     if not apartment_scans:
-        elements.append(Paragraph("No data found.", body_style))
+        elements.append(Paragraph("No data found.", styles["Normal"]))
     else:
-        first_scan = apartment_scans[0]
-        test_by = first_scan["CompanyName"]
-        report_loc = first_scan["City"]
-        apartment_name = first_scan["Apartment"]
-        report_date = first_scan["scan_date"]
-        data = [
-            ["Tests were carried out by:", test_by],
-            ["Date:", report_date],
-            ["Report for location at:", report_loc],
-            ["Name of the building/apartment:", apartment_name],
+        first = apartment_scans[0]
+        header_data = [
+            ["Company", first["CompanyName"]],
+            ["Date", first["scan_date"]],
+            ["Location", first["City"]],
+            ["Apartment", first["Apartment"]]
         ]
-        table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
-        table.setStyle(
-            TableStyle([
-                ("ALIGN", (0,0), (-1,-1), "LEFT"),
-                ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-                ("TEXTCOLOR", (0,0), (0,-1), colors.black),
-                ("TEXTCOLOR", (1,0), (1,-1), colors.darkblue),
-                ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-                ("GRID", (0,0), (-1,-1), 0.5, colors.black)
-            ])
-        )
-        elements.append(table)
+        t = Table(header_data, colWidths=[100, 350])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey), ("GRID", (0, 0), (-1, -1), 1, colors.black)]))
+        elements.append(t)
         elements.append(PageBreak())
 
-        area_scans = {}
+        areas = {}
         for scan in apartment_scans:
-            area = scan.get("Room", "Unknown Area")
-            if area not in area_scans:
-                area_scans[area] = []
-            area_scans[area].append(scan)
+            areas.setdefault(scan.get("Room", "Unknown Room"), []).append(scan)
 
-        img_paths_to_delete = []
-        for i, (area, scans) in enumerate(area_scans.items(), start=1):
-            elements.append(Paragraph(f"{i} {area.upper()}", heading_style_left))
-            for j, scan in enumerate(scans, start=1):
-                elements.append(Paragraph(f"{i}.{j} Radar Scan", heading_style_sub))
-                radar_raw = scan.get("RadarRaw", [])
-                if radar_raw:
-                    processed_scan = preprocess_radar_data(radar_raw)
-                    device_name = scan.get("Devicename", "Unknown Device")
-                    timestamp = scan.get("timestamp", datetime.now())
-                    scan_duration = scan.get("ScanDuration", "Unknown")
-                    fig = plot_time_domain(processed_scan, device_name, timestamp, scan_duration)
-                    img_path = f"{tempfile.gettempdir()}/time_domain_plot_{i}_{j}.png"
-                    pio.write_image(fig, img_path, format="png")
+        img_paths = []
+
+        for i, (area, scans) in enumerate(areas.items(), 1):
+            elements.append(Paragraph(f"{i}. {area.upper()}", heading_left))
+
+            for j, scan in enumerate(scans, 1):
+                elements.append(Paragraph(f"{i}.{j} - Radar Scan", heading_sub))
+
+                raw_data = scan.get("RadarRaw", [])
+                if raw_data:
+                    df = preprocess_radar_data(raw_data)
+                    fig = plot_time_domain(df, scan.get("Devicename", "Unknown Device"), scan.get("timestamp", ""), scan.get("ScanDuration", ""))
+                    img_path = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
+                    pio.write_image(fig, img_path)
                     time.sleep(0.2)
-                    if os.path.isfile(img_path):
+                    if os.path.exists(img_path):
                         elements.append(Image(img_path, width=400, height=300))
-                        img_paths_to_delete.append(img_path)
-                    else:
-                        st.error(f"Image file not found: {img_path}")
-                    elements.append(Spacer(1,12))
-                    elements.append(Paragraph(f"Device Name: {device_name}", body_style))
-                    elements.append(Spacer(1,3))
-                    try:
-                        ts_obj = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
-                    except Exception:
-                        ts_obj = timestamp
-                    elements.append(Paragraph(f"Timestamp: {ts_obj}", body_style))
-                    elements.append(Spacer(1,3))
-                    elements.append(Paragraph(f"Scan Duration: {scan_duration}", body_style))
-                    elements.append(Spacer(1,12))
-                    data = [
-                        ["Scan Location:", scan.get("Room", "N/A")],
-                        ["Device was:", scan.get("Positioned", "N/A")],
-                        ["Damage Visible:", scan.get("DamageVisible", "N/A")],
+                        img_paths.append(img_path)
+
+                    elements.append(Paragraph(f"Device: {scan.get('Devicename', '')}", styles["Normal"]))
+                    elements.append(Paragraph(f"Timestamp: {scan.get('timestamp', '')}", styles["Normal"]))
+                    elements.append(Paragraph(f"Scan Duration: {scan.get('ScanDuration', '')}", styles["Normal"]))
+                    elements.append(Spacer(1, 10))
+
+                    details = [
+                        ["Location", scan.get("Room", "")],
+                        ["Position", scan.get("Positioned", "")],
+                        ["Damage", scan.get("DamageVisible", "")]
                     ]
-                    table = Table(data, colWidths=[2.5 * inch, 3.5 * inch])
-                    table.setStyle(
-                        TableStyle([
-                            ("ALIGN", (0,0), (0,-1), "LEFT"),
-                            ("ALIGN", (1,0), (-1,-1), "LEFT"),
-                            ("BOTTOMPADDING", (0,0), (-1,-1), 5)
-                        ])
-                    )
-                    elements.append(table)
-                    elements.append(Spacer(1,20))
+                    dt = Table(details, colWidths=[150, 200])
+                    dt.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 1, colors.black)]))
+                    elements.append(dt)
+                    elements.append(Spacer(1, 10))
+
         doc.build(elements)
-        for path in img_paths_to_delete:
+
+        for img in img_paths:
             try:
-                os.remove(path)
+                os.remove(img)
             except:
                 pass
+
     return pdf_path
 
 def main():
     company_name = st.session_state["company"]
-    st.markdown(
-        """
+
+    st.markdown("""
         <style>
-        .main-header {
-            font-size: 2.2rem;
-            color: #1f4e79;
-            text-align: center;
-            margin-bottom: 2rem;
-        }
+            .main-header {
+                font-size: 2.5rem;
+                color: #1f4e79;
+                text-align: center;
+                margin-bottom: 2rem;
+            }
         </style>
-        """,
-        unsafe_allow_html=True,
+        """, unsafe_allow_html=True
     )
+
     with st.sidebar:
-        st.title(f"Welcome, {company_name}!")
-        if st.button("Logout", type="secondary"):
+        st.title(f"Welcome, {company_name}")
+        if st.button("Logout"):
             logout()
         st.markdown("---")
-        locations, city_to_areas, scans_data = fetch_data(company_name)
-        selected_location = st.selectbox("Select Report Location:", locations, key="selected_location")
-        filtered_areas = city_to_areas.get(selected_location, [])
-        selected_area = st.selectbox("Select Report Area:", sorted(filtered_areas), key="selected_area")
-        scan_months = set()
-        for scan in scans_data:
-            if (
-                scan.get("City", "").strip() == selected_location
-                and scan.get("Area", "").strip() == selected_area
-            ):
+        locations, city_areas, scans = fetch_data(company_name)
+
+        selected_location = st.selectbox("Select Location", locations)
+        areas = city_areas.get(selected_location, [])
+        selected_area = st.selectbox("Select Area", sorted(areas))
+
+        months = set()
+        for scan in scans:
+            if scan.get("City") == selected_location and scan.get("Area") == selected_area:
                 try:
-                    scan_date_obj = datetime.strptime(scan.get("scan_date", "1970-01-01"), "%Y-%m-%d")
-                    scan_months.add(scan_date_obj.strftime("%Y-%m"))
-                except Exception:
+                    dt = datetime.strptime(scan.get("scan_date"), '%Y-%m-%d')
+                    months.add(dt.strftime('%Y-%m'))
+                except:
                     continue
-        scan_months = sorted(list(scan_months))
-        selected_month = st.selectbox("Select scan month:", scan_months, key="selected_month")
+        months = sorted(list(months))
+        selected_month = st.selectbox("Select Month", months)
 
-    if selected_month:
-        month_dt = datetime.strptime(selected_month, "%Y-%m")
-        pretty_month_label = month_dt.strftime("%B %Y").upper()
-    else:
-        pretty_month_label = ""
+    if all([selected_location, selected_area, selected_month]):
+        st.markdown(f"# Trebirth Scan Report Viewer")
+        st.subheader(f"All Scans for {selected_area} in {datetime.strptime(selected_month, '%Y-%m').strftime('%B %Y').upper()}")
+        st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
 
-    st.markdown(f'<h1 class="main-header">Trebirth Scan Report Viewer</h1>', unsafe_allow_html=True)
+        filtered = [sc for sc in scans if sc.get("City") == selected_location and sc.get("Area") == selected_area and sc.get("scan_date", "").startswith(selected_month) and sc.get("CompanyName") == company_name]
 
-    if selected_location and selected_area and selected_month:
-        final_scans = [
-            scan
-            for scan in scans_data
-            if scan.get("City", "").strip() == selected_location
-            and scan.get("Area", "").strip() == selected_area
-            and scan.get("scan_date", "1970-01-01").startswith(selected_month)
-            and scan.get("CompanyName", "").strip() == company_name
-        ]
-        if final_scans:
-            st.subheader(f"All Scans for {selected_area} in {pretty_month_label}")
-            st.markdown("<div style='height:25px;'></div>", unsafe_allow_html=True)
-            apartments = {}
-            for scan in final_scans:
-                apt = scan.get("Apartment", "N/A")
-                if apt not in apartments:
-                    apartments[apt] = []
-                apartments[apt].append(scan)
+        apartments = {}
+        for f in filtered:
+            apartments.setdefault(f.get("Apartment", "Unknown"), []).append(f)
 
-            # Table headers
-            col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-            with col1: st.write("**Apartment**")
-            with col2: st.write("**Date of Scan**")
-            with col3: st.write("**Incharge**")
-            with col4: st.write("**Download PDF**")
-            st.markdown("---")
+        col1, col2, col3, col4 = st.columns([3,2,2,2])
+        col1.write("Apartment")
+        col2.write("Date")
+        col3.write("Incharge")
+        col4.write("Download PDF")
+        st.markdown("---")
 
-            for apartment, scans in apartments.items():
-                first_scan = scans[0]
-                col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-                with col1: st.write(apartment)
-                with col2: st.write(first_scan.get("scan_date", "Unknown Date"))
-                with col3: st.write(first_scan.get("Incharge", "N/A"))
-                with col4:
-                    # Generate PDF and trigger immediate download without extra button
-                    if st.button("Download PDF", key=f"pdf_{apartment}_{selected_month}_{selected_area}"):
-                        with st.spinner(f"Generating PDF for {apartment}..."):
-                            try:
-                                pdf_file = generate_pdf_for_apartment(scans, company_name)
-                                with open(pdf_file, "rb") as file:
-                                    pdf_data = file.read()
-                                b64 = base64.b64encode(pdf_data).decode()
-                                file_name = f"Trebirth_Report_{apartment}_{selected_month}.pdf"
-                                href = f'<a href="data:application/pdf;base64,{b64}" download="{file_name}">Click here if download does not start</a>'
-                                st.markdown(
-                                    f"""
-                                    <meta http-equiv="refresh" content="0; url=data:application/pdf;base64,{b64}">
-                                    <script>
-                                        var a = document.createElement('a');
-                                        a.href = "data:application/pdf;base64,{b64}";
-                                        a.download = "{file_name}";
-                                        document.body.appendChild(a);
-                                        a.click();
-                                        document.body.removeChild(a);
-                                    </script>
-                                    {href}
-                                    """,
-                                    unsafe_allow_html=True,
-                                )
-                                os.remove(pdf_file)
-                            except Exception as e:
-                                st.error(f"Error generating PDF: {str(e)}")
-                st.markdown("---")
-        else:
-            st.warning("No scans available for the selected criteria.")
-    else:
-        st.info("Please make all selections in the sidebar to view available reports.")
+        for apt, scans_list in apartments.items():
+            first_scan = scans_list[0]
+            cols = st.columns([3,2,2,2])
+            cols.write(apt)
+            cols[1].write(first_scan.get("scan_date",""))
+            cols.write(first_scan.get("Incharge",""))
+            if cols.button("Download PDF", key=apt):
+                pdf_file = generate_pdf(scans_list, company_name)
+                with open(pdf_file, "rb") as f:
+                    st.download_button("Click to download", f.read(), file_name=f"Trebirth_{apt}_{selected_month}.pdf", mime="application/pdf")
+                os.remove(pdf_file)
 
 if __name__ == "__main__":
     main()
