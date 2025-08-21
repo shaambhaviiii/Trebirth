@@ -371,7 +371,14 @@ def main():
         scan_months = sorted(list(scan_months))
         selected_month = st.selectbox("Select scan month:", scan_months, key="selected_month")
 
-    st.markdown('<h1 class="main-header">Trebirth Scan Report Viewer</h1>', unsafe_allow_html=True)
+    # Format month as Monthname Year (uppercase)
+    if selected_month:
+        month_dt = datetime.strptime(selected_month, "%Y-%m")
+        pretty_month_label = month_dt.strftime("%B %Y").upper()
+    else:
+        pretty_month_label = ""
+
+    st.markdown(f'<h1 class="main-header">Trebirth Scan Report Viewer</h1>', unsafe_allow_html=True)
 
     if selected_location and selected_area and selected_month:
         final_scans = [
@@ -384,7 +391,8 @@ def main():
         ]
 
         if final_scans:
-            st.subheader(f"All Scans for {selected_area} in {selected_month}")
+            st.subheader(f"All Scans for {selected_area} in {pretty_month_label}")
+            st.markdown("<div style='height:25px;'></div>", unsafe_allow_html=True)  # gap between heading and table
 
             apartments = {}
             for scan in final_scans:
