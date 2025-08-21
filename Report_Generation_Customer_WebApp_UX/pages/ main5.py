@@ -3,11 +3,10 @@ from google.cloud import firestore
 import pandas as pd
 from datetime import datetime
 import numpy as np
-import time
 import os
 import random
 import tempfile
-import plotly.io as pio
+
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -15,9 +14,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Page
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from google.api_core.exceptions import ResourceExhausted, RetryError
 
-# Set browser path for kaleido
 os.environ["BROWSER_PATH"] = "/usr/bin/chromium"  
 st.set_page_config(layout="wide", page_title="Trebirth Scan Report Viewer")
 
@@ -57,12 +54,6 @@ def init_firestore():
 
 db = init_firestore()
 
-def exponential_backoff(retries):
-    base_delay = 1
-    max_delay = 60
-    delay = base_delay * (2 ** retries) + random.uniform(0, 1)
-    return min(delay, max_delay)
-
 @st.cache_data
 def fetch_data(company_name):
     if not db:
@@ -97,7 +88,6 @@ def fetch_data(company_name):
     return sorted(locations), city_to_areas, scans_data
 
 def preprocess_radar_data(radar_raw):
-    import pandas as pd
     df_radar = pd.DataFrame(radar_raw, columns=['Radar'])
     df_radar.dropna(inplace=True)
     df_radar.fillna(df_radar.mean(), inplace=True)
@@ -142,10 +132,8 @@ def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, s
     return fig
 
 def generate_pdf_for_apartment(apartment_scans, company_name):
-    import matplotlib.pyplot as plt
     import plotly.io as pio
     import os
-    import tempfile
     pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
     
     doc = SimpleDocTemplate(pdf_path, pagesize=A4)
@@ -274,20 +262,21 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
 def main():
     company_name = st.session_state["company"]
 
+    # Custom CSS for table and spacing
     st.markdown(
         """
         <style>
-        .main-header {
-            font-size: 2.2rem;
-            color: #1f4e79;
-            text-align: center;
-            margin-bottom: 2rem;
-        }
+        .main-header { font-size: 2.4rem; color: #1f4e79; text-align: center; margin-bottom: 2rem; }
+        .custom-table th { background-color: #20242f; color: white; padding: 12px; text-align: left; font-size: 1.05em; }
+        .custom-table td { background-color: #232735; color: #ebeff6; padding: 11px; border-top: 1px solid #2d3241;}
+        .custom-table { width: 95%; margin: 0 auto 2em auto; border-collapse: collapse;}
+        .gap-above-table { height: 30px; }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
+    # Sidebar
     with st.sidebar:
         st.title(f"Welcome, {company_name}!")
         if st.button("Logout", type="secondary"):
@@ -307,12 +296,11 @@ def main():
             if scan["City"].strip() == selected_location and scan["Area"].strip() == selected_area:
                 scan_date_obj = datetime.strptime(scan.get("scan_date", "1970-01-01"), '%Y-%m-%d')
                 scan_months.add(scan_date_obj.strftime("%Y-%m"))
-
         scan_months = sorted(list(scan_months))
         selected_month = st.selectbox("Select scan month:", scan_months, key="selected_month")
 
     st.markdown('<h1 class="main-header">Trebirth Scan Report Viewer</h1>', unsafe_allow_html=True)
-
+    
     if selected_location and selected_area and selected_month:
         final_scans = [
             scan for scan in scans_data
@@ -324,6 +312,7 @@ def main():
 
         if final_scans:
             st.subheader(f"All Scans for {selected_area} in {selected_month}")
+            st.markdown("<div class='gap-above-table'></div>", unsafe_allow_html=True)
 
             apartments = {}
             for scan in final_scans:
@@ -332,36 +321,55 @@ def main():
                     apartments[apt] = []
                 apartments[apt].append(scan)
 
-            col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-            with col1: st.write("**Apartment**")
-            with col2: st.write("**Date of Scan**")
-            with col3: st.write("**Incharge**")
-            with col4: st.write("**Download PDF**")
-            st.markdown("---")
-
+            # Build HTML table
+            table_html = """
+            <table class="custom-table">
+                <thead>
+                    <tr>
+                        <th>Apartment</th>
+                        <th>Date of Scan</th>
+                        <th>Incharge</th>
+                        <th>Download PDF</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
             for apartment, scans in apartments.items():
                 first_scan = scans[0]
-                col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
-                with col1: st.write(apartment)
-                with col2: st.write(first_scan.get("scan_date", "Unknown Date"))
-                with col3: st.write(first_scan.get("Incharge", "N/A"))
-                with col4:
-                    if st.button("Download PDF", key=f"pdf_{apartment}_{selected_month}_{selected_area}"):
-                        with st.spinner(f"Generating PDF for {apartment}..."):
-                            try:
-                                pdf_file = generate_pdf_for_apartment(scans, company_name)
-                                with open(pdf_file, "rb") as file:
-                                    st.download_button(
-                                        label=f"Download {apartment} Report",
-                                        data=file,
-                                        file_name=f"Trebirth_Report_{apartment}_{selected_month}.pdf",
-                                        mime="application/pdf",
-                                        key=f"download_{apartment}_{selected_month}_{selected_area}"
-                                    )
-                                os.remove(pdf_file)
-                            except Exception as e:
-                                st.error(f"Error generating PDF: {str(e)}")
-                st.markdown("---")
+                table_html += f"""
+                    <tr>
+                        <td>{apartment}</td>
+                        <td>{first_scan.get("scan_date", "Unknown Date")}</td>
+                        <td>{first_scan.get("Incharge", "N/A")}</td>
+                        <td>""" + f"""<form action="" method="post">{'<input type="submit" value="Download PDF" />'}</form></td>
+                    </tr>
+                """
+            table_html += """
+                </tbody>
+            </table>
+            """
+
+            st.markdown(table_html, unsafe_allow_html=True)
+
+            # Render download buttons below the table per apartment for actual downloads
+            for apartment, scans in apartments.items():
+                # Only one button per apartment, not inside the HTML table.
+                st.markdown(f"<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
+                if st.button(f"Download PDF: {apartment}", key=f"pdf_{apartment}_{selected_month}_{selected_area}"):
+                    with st.spinner(f"Generating PDF for {apartment}..."):
+                        try:
+                            pdf_file = generate_pdf_for_apartment(scans, company_name)
+                            with open(pdf_file, "rb") as file:
+                                st.download_button(
+                                    label=f"Download {apartment} Report",
+                                    data=file,
+                                    file_name=f"Trebirth_Report_{apartment}_{selected_month}.pdf",
+                                    mime="application/pdf",
+                                    key=f"download_{apartment}_{selected_month}_{selected_area}"
+                                )
+                            os.remove(pdf_file)
+                        except Exception as e:
+                            st.error(f"Error generating PDF: {str(e)}")
 
             df = pd.DataFrame(final_scans)
             csv = df.to_csv(index=False).encode('utf-8')
