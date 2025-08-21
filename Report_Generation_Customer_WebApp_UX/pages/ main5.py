@@ -2,6 +2,7 @@ import streamlit as st
 from google.cloud import firestore
 import pandas as pd
 from datetime import datetime
+from dateutil import parser  # pip install python-dateutil
 import numpy as np
 import time
 import os
@@ -109,13 +110,14 @@ def fetch_data(company_name):
 
             # Parse timestamp to create a formatted scan_date string
             timestamp_str = data.get("timestamp")
-            scan_date = (
-                datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S").strftime("%Y-%m-%d")
-                if timestamp_str
-                else "Unknown Date"
-            )
-            data["scan_date"] = scan_date
-            scans_data.append(data)
+            scan_date = "Unknown Date"
+            if timestamp_str:
+                try:
+                    # Automatically parse various string timestamp formats to datetime
+                    dt = parser.parse(str(timestamp_str))
+                    scan_date = dt.strftime("%Y-%m-%d")
+                except Exception:
+                    scan_date = "Unknown Date"
 
     return sorted(locations), city_to_areas, scans_data
 
