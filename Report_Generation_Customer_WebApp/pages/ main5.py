@@ -285,14 +285,12 @@ def generate_pdf():
 
     
     elements = []
-    elements.append(Paragraph("TERMATRAC TEST REPORT", heading_style_centered))
-    elements.append(Paragraph("SUPPLEMENT TO TIMBER PEST REPORT", heading_style_centered))
+    elements.append(Paragraph("TREBIRTH TEST REPORT", heading_style_centered))
+    #elements.append(Paragraph("SUPPLEMENT TO TIMBER PEST REPORT", heading_style_centered))
     elements.append(Spacer(1, 16))
     
     desc_lines = [
-        "This Trebirth test report is a supplementary report only, which MUST be read in",
-        "conjunction with the full timber pest report. This report cannot be relied upon",
-        "without the full timber pest report and is only a record of the test findings."
+        "This Trebirth test report is a supplementary report only, which MUST be read in and is only a record of the test findings."
     ]
     
     for line in desc_lines:
@@ -313,7 +311,7 @@ def generate_pdf():
     else:
         test_by = filtered_scans[0]["CompanyName"]
         report_loc = filtered_scans[0]["City"]
-        requested_by = filtered_scans[0]["ReportRequestedBy"]
+        Apartment_name = filtered_scans[0]["Apartment"]
         report_date = filtered_scans[0]["scan_date"]
         
         # Split the general information into multiple lines and add a Spacer after each line
@@ -321,8 +319,8 @@ def generate_pdf():
         data = [
             ["Tests were carried out by:", test_by],
             ["Date:", report_date],
-            ["Report for building at:", report_loc],
-            ["Report requested by:", requested_by]
+            ["Report for location at:", report_loc],
+            ["Name of the building/apartment:", Apartment_name]
         ]
 
         # Create the table
