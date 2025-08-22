@@ -121,7 +121,7 @@ def fetch_data(company_name):
             data["scan_date"] = scan_date
             scans_data.append(data)
 
-return sorted(locations), city_to_areas, scans_data
+ return sorted(locations), city_to_areas, scans_data
     
 locations, city_to_areas, scans_data = fetch_data(company_name)
 
