@@ -311,6 +311,8 @@ def main():
         st.title(f"Welcome, {company_name}!")
         if st.button("Logout", type="secondary"):
             logout()
+        if st.button("Refresh DB", type = "secondary"):
+            locations, city_to_areas, scans_data = fetch_data(company_name)
         st.markdown("---")
         locations, city_to_areas, scans_data = fetch_data(company_name)
         selected_location = st.selectbox("Select Report Location:", locations, key="selected_location")
