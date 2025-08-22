@@ -385,6 +385,4 @@ def main():
         st.info("Please make all selections in the sidebar to view available reports.")
 
 if __name__ == "__main__":
-    while True:
-      main()
-      time.sleep(15)  
+    main()
