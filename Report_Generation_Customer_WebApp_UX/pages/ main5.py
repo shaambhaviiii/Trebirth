@@ -307,6 +307,7 @@ def main():
         </style>""", unsafe_allow_html=True)
 
     with st.sidebar:
+        
         st.title(f"Welcome, {company_name}!")
         if st.button("Logout", type="secondary"):
             logout()
@@ -384,4 +385,6 @@ def main():
         st.info("Please make all selections in the sidebar to view available reports.")
 
 if __name__ == "__main__":
-    main()
+    while True:
+      main()
+      time.sleep(15)  
