@@ -101,6 +101,7 @@ def fetch_data(company_name):
             location = data.get("City", "").strip()
             if location:
                 locations.add(location)
+            st.write(locations)
 
                 area = data.get("Area", "").strip()
                 if area:
@@ -120,6 +121,7 @@ def fetch_data(company_name):
 
             data["scan_date"] = scan_date
             scans_data.append(data)
+        st.write(locations)
 
     return sorted(locations), city_to_areas, scans_data
 
@@ -356,6 +358,7 @@ def main():
         st.markdown("---")
 
         # Fetch all data related to the company from Firestore
+        st.write(locations)
         locations, city_to_areas, scans_data = fetch_data(company_name)
 
         # Select location filter (single choice)
