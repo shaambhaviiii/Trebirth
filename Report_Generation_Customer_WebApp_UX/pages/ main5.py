@@ -294,7 +294,6 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
                     elements.append(table)
                     elements.append(Spacer(1,20))
         doc.build(elements)
-        # Clean up temporary image files
         for path in img_paths_to_delete:
             try:
                 os.remove(path)
@@ -314,7 +313,7 @@ def initialize_polling_state():
             "scans_data": []
         }
 
-# Poll Firestore for updates every 10 seconds and rerun if data changed
+# Poll Firestore for updates every 10 seconds and signal if rerun is needed
 def poll_firebase_data(company_name):
     now = datetime.now()
     # Poll every 10 seconds (adjust as needed)
@@ -331,17 +330,20 @@ def poll_firebase_data(company_name):
                 "scans_data": scans_data,
             }
             st.session_state["last_update"] = now
-            st.experimental_rerun()  # Rerun app to reflect fresh data
+            return True  # Signal that the app should rerun to update UI
         else:
-            # No changes detected, just update last_update timestamp
             st.session_state["last_update"] = now
+    return False
 
 def main():
     company_name = st.session_state["company"]
 
     # Initialize polling state and poll Firestore for updates
     initialize_polling_state()
-    poll_firebase_data(company_name)
+    should_rerun = poll_firebase_data(company_name)
+    if should_rerun:
+        # Rerun app outside of polling function to avoid AttributeError
+        st.experimental_rerun()
 
     # Use cached data from session_state to drive UI
     locations = st.session_state["firebase_data_cache"]["locations"]
