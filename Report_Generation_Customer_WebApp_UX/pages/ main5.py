@@ -43,7 +43,6 @@ if "authenticated" not in st.session_state:
 if "company" not in st.session_state:
     st.session_state["company"] = None
 
-# Company credentials dictionary (not directly used in this snippet)
 company_credentials = {
     "Hlabs": "H2025$$",
     "Ilabs": "I2025$$",
@@ -52,7 +51,6 @@ company_credentials = {
     "Trebirth": "T2025$$",
 }
 
-# Logout function to reset session state and rerun app
 def logout():
     st.session_state["authenticated"] = False
     st.session_state["company"] = None
@@ -61,7 +59,6 @@ def logout():
             del st.session_state[key]
     st.rerun()
 
-# Initialize Firestore client from secrets
 @st.cache_resource
 def init_firestore():
     try:
@@ -73,14 +70,6 @@ def init_firestore():
 
 db = init_firestore()
 
-# Exponential backoff utility for retry logic (unused in this snippet)
-def exponential_backoff(retries):
-    base_delay = 1
-    max_delay = 60
-    delay = base_delay * (2 ** retries) + random.uniform(0, 1)
-    return min(delay, max_delay)
-
-# Fetch data from Firestore filtered by company_name
 @st.cache_data
 def fetch_data(company_name):
     if not db:
@@ -105,7 +94,6 @@ def fetch_data(company_name):
                     if location not in city_to_areas:
                         city_to_areas[location] = set()
                     city_to_areas[location].add(area)
-            # Parse timestamp string flexibly, fallback to "Unknown Date"
             timestamp_str = data.get("timestamp")
             scan_date = "Unknown Date"
             if timestamp_str:
@@ -118,15 +106,13 @@ def fetch_data(company_name):
             scans_data.append(data)
     return sorted(locations), city_to_areas, scans_data
 
-# Preprocess radar data into cleaned DataFrame
 def preprocess_radar_data(radar_raw):
-    import pandas as pd
+    # Process raw radar list into cleaned pandas DataFrame with no missing values
     df_radar = pd.DataFrame(radar_raw, columns=["Radar"])
     df_radar.dropna(inplace=True)
     df_radar.fillna(df_radar.mean(), inplace=True)
     return df_radar
 
-# Plot radar data over time using Plotly
 def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, sampling_rate=100):
     import plotly.graph_objects as go
     fig = go.Figure()
@@ -166,18 +152,17 @@ def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, s
     )
     return fig
 
-# Generate PDF report for apartment scans
 def generate_pdf_for_apartment(apartment_scans, company_name):
     import plotly.io as pio
-    import os
     import tempfile
     import time
+    import os
 
     pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
     doc = SimpleDocTemplate(pdf_path, pagesize=A4)
     styles = getSampleStyleSheet()
 
-    # Register fonts if available
+    # Register fonts (optional)
     try:
         pdfmetrics.registerFont(TTFont("ARLRDBD", "Report_Generation_Customer_WebApp/ARLRDBD.TTF"))
         pdfmetrics.registerFont(TTFont("ARIAL", "Report_Generation_Customer_WebApp/ARIAL.TTF"))
@@ -301,36 +286,32 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
                 pass
     return pdf_path
 
-# Initialize polling state in session_state
 def initialize_polling_state():
+    # Initialize last update timestamp and cache if not present
     if "last_update" not in st.session_state:
         st.session_state["last_update"] = datetime.min
     if "firebase_data_cache" not in st.session_state:
-        # Cache stores last fetched locations, areas, scans
         st.session_state["firebase_data_cache"] = {
             "locations": [],
             "city_to_areas": {},
             "scans_data": []
         }
 
-# Poll Firestore for updates every 10 seconds and signal if rerun is needed
 def poll_firebase_data(company_name):
+    # Poll Firestore every 10 seconds, update cache, and signal rerun if data changed
     now = datetime.now()
-    # Poll every 10 seconds (adjust as needed)
     if now - st.session_state["last_update"] > timedelta(seconds=10):
-        # Fetch fresh data from Firestore
         locations, city_to_areas, scans_data = fetch_data(company_name)
         cached_scans = st.session_state["firebase_data_cache"].get("scans_data", [])
-        # Simple change detection by comparing lengths (improve with hashes/timestamps if needed)
+        # Simple change detection by length, improve with more robust method if needed
         if len(scans_data) != len(cached_scans):
-            # Update cache with new data
             st.session_state["firebase_data_cache"] = {
                 "locations": locations,
                 "city_to_areas": city_to_areas,
                 "scans_data": scans_data,
             }
             st.session_state["last_update"] = now
-            return True  # Signal that the app should rerun to update UI
+            return True  # Indicate rerun needed
         else:
             st.session_state["last_update"] = now
     return False
@@ -338,19 +319,22 @@ def poll_firebase_data(company_name):
 def main():
     company_name = st.session_state["company"]
 
-    # Initialize polling state and poll Firestore for updates
+    # Initialize session state and poll data
     initialize_polling_state()
     should_rerun = poll_firebase_data(company_name)
     if should_rerun:
-        # Rerun app outside of polling function to avoid AttributeError
-        st.experimental_rerun()
+        try:
+            st.experimental_rerun()
+        except Exception:
+            # Prevent crash if rerun is called at invalid time
+            pass
 
-    # Use cached data from session_state to drive UI
+    # Use cached data for UI
     locations = st.session_state["firebase_data_cache"]["locations"]
     city_to_areas = st.session_state["firebase_data_cache"]["city_to_areas"]
     scans_data = st.session_state["firebase_data_cache"]["scans_data"]
 
-    # Custom CSS for header style
+    # Page header style
     st.markdown("""
         <style>
         .main-header {
@@ -361,7 +345,7 @@ def main():
         }
         </style>""", unsafe_allow_html=True)
 
-    # Sidebar UI for filtering reports
+    # Sidebar for report filters
     with st.sidebar:
         st.title(f"Welcome, {company_name}!")
         if st.button("Logout", type="secondary"):
@@ -370,6 +354,7 @@ def main():
         selected_location = st.selectbox("Select Report Location:", locations, key="selected_location")
         filtered_areas = city_to_areas.get(selected_location, [])
         selected_area = st.selectbox("Select Report Area:", sorted(filtered_areas), key="selected_area")
+
         scan_months = set()
         for scan in scans_data:
             if (scan.get("City", "").strip() == selected_location and scan.get("Area", "").strip() == selected_area):
@@ -390,7 +375,7 @@ def main():
 
     st.markdown(f'<h1 class="main-header">Trebirth Scan Report Viewer</h1>', unsafe_allow_html=True)
 
-    # Display filtered scan reports based on user selection
+    # Show scans filtered by user selection
     if selected_location and selected_area and selected_month:
         final_scans = [
             scan
@@ -403,18 +388,21 @@ def main():
         if final_scans:
             st.subheader(f"All Scans for {selected_area} in {pretty_month_label}")
             st.markdown("<div style='height:25px;'></div>", unsafe_allow_html=True)
+
             apartments = {}
             for scan in final_scans:
                 apt = scan.get("Apartment", "N/A")
                 if apt not in apartments:
                     apartments[apt] = []
                 apartments[apt].append(scan)
+
             col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
             with col1: st.write("**Apartment**")
             with col2: st.write("**Date of Scan**")
             with col3: st.write("**Incharge**")
             with col4: st.write("**Download PDF**")
             st.markdown("---")
+
             for apartment, scans in apartments.items():
                 first_scan = scans[0]
                 col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
