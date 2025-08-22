@@ -120,11 +120,10 @@ def fetch_data(company_name):
 
             data["scan_date"] = scan_date
             scans_data.append(data)
-        st.write(locations)
 
-    return sorted(locations), city_to_areas, scans_data
+   return sorted(locations), city_to_areas, scans_data
     
-  locations, city_to_areas, scans_data = fetch_data(company_name)
+locations, city_to_areas, scans_data = fetch_data(company_name)
 
 def preprocess_radar_data(radar_raw):
     # Process raw radar list into cleaned pandas DataFrame with no missing values
