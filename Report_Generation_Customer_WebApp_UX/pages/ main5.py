@@ -293,6 +293,10 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
                 pass
     return pdf_path
 
+def refresh_data():
+    """Callback function to refresh data"""
+    st.session_state.locations, st.session_state.city_to_areas, st.session_state.scans_data = fetch_data(company_name)
+    
 def main():
     company_name = st.session_state["company"]
 
@@ -311,15 +315,14 @@ def main():
         st.title(f"Welcome, {company_name}!")
         if st.button("Logout", type="secondary"):
             logout()
-        if st.button("Refresh DB", type = "secondary"):
-            locations, city_to_areas, scans_data = fetch_data(company_name)
+        st.button("Refresh DB", type = "secondary", on_click=refresh_data):
         st.markdown("---")
         locations, city_to_areas, scans_data = fetch_data(company_name)
-        selected_location = st.selectbox("Select Report Location:", locations, key="selected_location")
-        filtered_areas = city_to_areas.get(selected_location, [])
+        selected_location = st.selectbox("Select Report Location:", st.session_state.locations, key="selected_location")
+        filtered_areas = st.session_state.city_to_areas.get(selected_location, [])
         selected_area = st.selectbox("Select Report Area:", sorted(filtered_areas), key="selected_area")
         scan_months = set()
-        for scan in scans_data:
+        for scan in st.session_state.scans_data:
             if (scan.get("City", "").strip() == selected_location and scan.get("Area", "").strip() == selected_area):
                 try:
                     scan_date_obj = datetime.strptime(scan.get("scan_date", "1970-01-01"), "%Y-%m-%d")
