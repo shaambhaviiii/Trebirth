@@ -2,8 +2,7 @@ import streamlit as st
 from google.cloud import firestore
 import pandas as pd
 from datetime import datetime
-from dateutil import parser
-from streamlit_autorefresh import st_autorefresh
+from dateutil import parser  # pip install python-dateutil for flexible date parsing
 import numpy as np
 import time
 import os
@@ -25,6 +24,7 @@ from reportlab.platypus import (
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from google.api_core.exceptions import ResourceExhausted, RetryError
 
 # Set browser path for kaleido (used for plotly image export)
 os.environ["BROWSER_PATH"] = "/usr/bin/chromium"
@@ -32,9 +32,10 @@ os.environ["BROWSER_PATH"] = "/usr/bin/chromium"
 # Configure Streamlit page layout and title
 st.set_page_config(layout="wide", page_title="Trebirth Scan Report Viewer")
 
+# Redirect to login page if user is not authenticated
 if "authenticated" not in st.session_state or not st.session_state.get("authenticated", False):
     st.warning("Please log in first.")
-    st.stop()
+    st.switch_page("main4.py")
 
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
@@ -55,7 +56,7 @@ def logout():
     for key in list(st.session_state.keys()):
         if key.startswith(("selected_", "filtered_")):
             del st.session_state[key]
-    st.experimental_rerun()
+    st.rerun()
 
 @st.cache_resource
 def init_firestore():
@@ -68,7 +69,13 @@ def init_firestore():
 
 db = init_firestore()
 
-@st.cache_data(ttl=10)  # Cache data for 10 seconds
+def exponential_backoff(retries):
+    base_delay = 1
+    max_delay = 60
+    delay = base_delay * (2 ** retries) + random.uniform(0, 1)
+    return min(delay, max_delay)
+
+@st.cache_data
 def fetch_data(company_name):
     if not db:
         return [], {}, []
@@ -82,6 +89,7 @@ def fetch_data(company_name):
     for doc in docs:
         data = doc.to_dict()
         company = data.get("CompanyName", "").strip()
+
         if company == company_name:
             location = data.get("City", "").strip()
             if location:
@@ -91,6 +99,7 @@ def fetch_data(company_name):
                     if location not in city_to_areas:
                         city_to_areas[location] = set()
                     city_to_areas[location].add(area)
+            # Parse timestamp string with flexible parser, fallback to "Unknown Date"
             timestamp_str = data.get("timestamp")
             scan_date = "Unknown Date"
             if timestamp_str:
@@ -104,12 +113,15 @@ def fetch_data(company_name):
     return sorted(locations), city_to_areas, scans_data
 
 def preprocess_radar_data(radar_raw):
+    # Process raw radar list into cleaned pandas DataFrame with no missing values
+    import pandas as pd
     df_radar = pd.DataFrame(radar_raw, columns=["Radar"])
     df_radar.dropna(inplace=True)
     df_radar.fillna(df_radar.mean(), inplace=True)
     return df_radar
 
 def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, sampling_rate=100):
+    # Create Plotly line plot of radar values over time with minimal axes
     import plotly.graph_objects as go
     fig = go.Figure()
     time_seconds = np.arange(len(preprocessed_scan)) / sampling_rate
@@ -150,9 +162,9 @@ def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, s
 
 def generate_pdf_for_apartment(apartment_scans, company_name):
     import plotly.io as pio
+    import os
     import tempfile
     import time
-    import os
 
     pdf_path = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf").name
     doc = SimpleDocTemplate(pdf_path, pagesize=A4)
@@ -282,58 +294,90 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
     return pdf_path
 
 def main():
-    # Auto-refresh Streamlit app every 10 seconds
-    st_autorefresh(interval=10000, limit=None, key="datarefresh")
-
-    if "company" not in st.session_state or not st.session_state["company"]:
-        st.warning("Please log in first.")
-        return
-
     company_name = st.session_state["company"]
 
-    locations, city_to_areas, scans_data = fetch_data(company_name)
+    st.markdown("""
+        <style>
+        .main-header {
+            font-size: 2.2rem;
+            color: #1f4e79;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        </style>""", unsafe_allow_html=True)
 
-    st.sidebar.title(f"Welcome, {company_name}!")
-    if st.sidebar.button("Logout", type="secondary"):
-        logout()
-
-    selected_location = st.sidebar.selectbox("Select Report Location:", locations)
-    filtered_areas = city_to_areas.get(selected_location, [])
-    selected_area = st.sidebar.selectbox("Select Report Area:", sorted(filtered_areas))
-
-    scan_months = set()
-    for scan in scans_data:
-        if (scan.get("City", "").strip() == selected_location and scan.get("Area", "").strip() == selected_area):
-            try:
-                dt = datetime.strptime(scan.get("scan_date", "1970-01-01"), "%Y-%m-%d")
-                scan_months.add(dt.strftime("%Y-%m"))
-            except Exception:
-                pass
-    scan_months = sorted(list(scan_months))
-    selected_month = st.sidebar.selectbox("Select scan month:", scan_months)
-
-    st.title("Trebirth Scan Report Viewer")
-
+    with st.sidebar:
+        st.title(f"Welcome, {company_name}!")
+        if st.button("Logout", type="secondary"):
+            logout()
+        st.markdown("---")
+        locations, city_to_areas, scans_data = fetch_data(company_name)
+        selected_location = st.selectbox("Select Report Location:", locations, key="selected_location")
+        filtered_areas = city_to_areas.get(selected_location, [])
+        selected_area = st.selectbox("Select Report Area:", sorted(filtered_areas), key="selected_area")
+        scan_months = set()
+        for scan in scans_data:
+            if (scan.get("City", "").strip() == selected_location and scan.get("Area", "").strip() == selected_area):
+                try:
+                    scan_date_obj = datetime.strptime(scan.get("scan_date", "1970-01-01"), "%Y-%m-%d")
+                    scan_months.add(scan_date_obj.strftime("%Y-%m"))
+                except Exception:
+                    continue
+        scan_months = sorted(list(scan_months))
+        selected_month = st.selectbox("Select scan month:", scan_months, key="selected_month")
+    if selected_month:
+        month_dt = datetime.strptime(selected_month, "%Y-%m")
+        pretty_month_label = month_dt.strftime("%B %Y").upper()
+    else:
+        pretty_month_label = ""
+    st.markdown(f'<h1 class="main-header">Trebirth Scan Report Viewer</h1>', unsafe_allow_html=True)
     if selected_location and selected_area and selected_month:
         final_scans = [
-            scan for scan in scans_data
+            scan
+            for scan in scans_data
             if scan.get("City", "").strip() == selected_location
             and scan.get("Area", "").strip() == selected_area
             and scan.get("scan_date", "1970-01-01").startswith(selected_month)
             and scan.get("CompanyName", "").strip() == company_name
         ]
         if final_scans:
-            st.subheader(f"Scans for {selected_area} in {selected_month}")
-            # Your UI display or PDF generation logic with final_scans here
-            # For brevity, just listing apartments:
+            st.subheader(f"All Scans for {selected_area} in {pretty_month_label}")
+            st.markdown("<div style='height:25px;'></div>", unsafe_allow_html=True)
             apartments = {}
             for scan in final_scans:
                 apt = scan.get("Apartment", "N/A")
-                apartments.setdefault(apt, []).append(scan)
-
+                if apt not in apartments:
+                    apartments[apt] = []
+                apartments[apt].append(scan)
+            col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+            with col1: st.write("**Apartment**")
+            with col2: st.write("**Date of Scan**")
+            with col3: st.write("**Incharge**")
+            with col4: st.write("**Download PDF**")
+            st.markdown("---")
             for apartment, scans in apartments.items():
-                st.write(f"Apartment: {apartment}, Number of scans: {len(scans)}")
-                # Add buttons or links to generate/download PDFs as needed
+                first_scan = scans[0]
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+                with col1: st.write(apartment)
+                with col2: st.write(first_scan.get("scan_date", "Unknown Date"))
+                with col3: st.write(first_scan.get("Incharge", "N/A"))
+                with col4:
+                    if st.button("Download PDF", key=f"pdf_{apartment}_{selected_month}_{selected_area}"):
+                        with st.spinner(f"Generating PDF for {apartment}..."):
+                            try:
+                                pdf_file = generate_pdf_for_apartment(scans, company_name)
+                                with open(pdf_file, "rb") as file:
+                                    st.download_button(
+                                        label=f"Download {apartment} Report",
+                                        data=file,
+                                        file_name=f"Trebirth_Report_{apartment}_{selected_month}.pdf",
+                                        mime="application/pdf",
+                                        key=f"download_{apartment}_{selected_month}_{selected_area}",
+                                    )
+                                os.remove(pdf_file)
+                            except Exception as e:
+                                st.error(f"Error generating PDF: {str(e)}")
+                st.markdown("---")
         else:
             st.warning("No scans available for the selected criteria.")
     else:
