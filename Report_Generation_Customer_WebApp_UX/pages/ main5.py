@@ -309,7 +309,8 @@ def main():
             margin-bottom: 2rem;
         }
         </style>""", unsafe_allow_html=True)
-
+    if 'locations' not in st.session_state:
+        st.session_state.locations, st.session_state.city_to_areas, st.session_state.scans_data = fetch_data(company_name)
     with st.sidebar:
         
         st.title(f"Welcome, {company_name}!")
