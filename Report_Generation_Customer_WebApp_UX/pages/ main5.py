@@ -121,9 +121,9 @@ def fetch_data(company_name):
             data["scan_date"] = scan_date
             scans_data.append(data)
 
-   return sorted(locations), city_to_areas, scans_data
+  return sorted(locations), city_to_areas, scans_data
 
- locations, city_to_areas, scans_data = fetch_data(company_name)
+ 
 
 def preprocess_radar_data(radar_raw):
     # Process raw radar list into cleaned pandas DataFrame with no missing values
@@ -174,7 +174,7 @@ def plot_time_domain(preprocessed_scan, device_name, timestamp, scan_duration, s
         ],
     )
     return fig
-
+locations, city_to_areas, scans_data = fetch_data(company_name)
 def generate_pdf_for_apartment(apartment_scans, company_name):
     # Generate PDF report for 1 apartment and its scans including images and metadata
     import plotly.io as pio
