@@ -101,7 +101,6 @@ def fetch_data(company_name):
             location = data.get("City", "").strip()
             if location:
                 locations.add(location)
-            st.write(locations)
 
                 area = data.get("Area", "").strip()
                 if area:
