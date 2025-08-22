@@ -295,6 +295,7 @@ def generate_pdf_for_apartment(apartment_scans, company_name):
 
 def refresh_data():
     """Callback function to refresh data"""
+    company_name = st.session_state["company"]
     st.session_state.locations, st.session_state.city_to_areas, st.session_state.scans_data = fetch_data(company_name)
     
 def main():
